@@ -1,0 +1,1696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MP Developers | Purchase Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --navy:#262B6E; --navy-light:#363C92; --navy-pale:#EBEDFA;
+    --gold:#EA7726; --gold-light:#F3A468; --teal:#363C92; --brick:#B85A17;
+    --bg:#F4F5F7; --card:#FFFFFF; --ink:#20244D; --muted:#666FA0; --border:#E4E5F0;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Inter',sans-serif;}
+  h1,h2,h3,.display{font-family:'Fraunces',serif;}
+  .num{font-variant-numeric:tabular-nums;}
+  header.top{background:linear-gradient(155deg,var(--navy) 0%,var(--navy-light) 100%);color:#fff;padding:34px 40px 26px;position:relative;overflow:hidden;}
+  header.top::after{content:"";position:absolute;inset:0;background-image:repeating-linear-gradient(90deg, rgba(201,162,75,0.06) 0 1px, transparent 1px 64px);pointer-events:none;}
+  .eyebrow{color:var(--gold-light);letter-spacing:.14em;text-transform:uppercase;font-size:11px;font-weight:600;margin:0 0 6px;}
+  header.top h1{font-size:30px;font-weight:600;margin:0 0 6px;color:#fff;}
+  .header-row{display:flex;align-items:center;gap:18px;}
+  .logo-badge{flex-shrink:0;width:60px;height:60px;background:#fff;border-radius:14px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.18);}
+  .logo-badge img{width:100%;height:100%;object-fit:cover;}
+  .tick-rule{display:flex;align-items:center;gap:3px;margin-top:18px;}
+  .tick-rule i{display:block;width:1px;height:8px;background:var(--gold);opacity:.55;}
+  .tick-rule i:nth-child(4n){height:13px;opacity:.9;}
+  main{max-width:1800px;margin:0 auto;padding:28px 32px 70px;}
+  .last-updated-badge{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--navy-pale);border:1px solid var(--border);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:12.5px;color:var(--navy);font-weight:600;}
+  .last-updated-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--teal);flex-shrink:0;}
+  .last-updated-badge .muted-part{color:var(--muted);font-weight:400;}
+  .recon{display:flex;align-items:center;gap:8px;border-radius:8px;padding:9px 14px;margin-bottom:18px;font-size:12.5px;font-weight:600;line-height:1.45;}
+  .recon.ok{background:#EAF6F3;color:#1E6B5C;border:1px solid #CDE9E2;}
+  .recon.warn{background:#FFF4E8;color:var(--brick);border:1px solid #F6D2B4;}
+  .recon.info{background:var(--navy-pale);color:var(--navy);border:1px solid var(--border);}
+  .recon small{font-weight:400;color:var(--muted);}
+  .dashboard-loading{display:flex;align-items:center;gap:10px;background:var(--navy-pale);border:1px solid var(--border);border-radius:8px;padding:14px 16px;margin-bottom:18px;font-size:13px;color:var(--navy);font-weight:600;}
+  .spin{width:15px;height:15px;flex-shrink:0;border-radius:50%;border:2.5px solid var(--border);border-top-color:var(--navy);animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .sync-banner{display:flex;align-items:center;justify-content:space-between;gap:14px;border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;font-weight:600;line-height:1.45;}
+  .sync-banner.ok{background:#EAF6F3;color:#1E6B5C;border:1px solid #CDE9E2;}
+  .sync-banner.warn{background:#FFF4E8;color:var(--brick);border:1px solid #F6D2B4;}
+  .sync-banner.busy{background:var(--navy-pale);color:var(--navy);border:1px solid var(--border);}
+  .sync-banner .msg small{display:block;font-weight:400;color:var(--muted);margin-top:2px;}
+  .upload-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:26px 28px;margin-bottom:26px;box-shadow:0 1px 2px rgba(20,30,50,.04);}
+  .upload-card h2{font-size:17px;margin:0 0 4px;color:var(--navy);}
+  .upload-card .sub{color:var(--muted);font-size:13px;margin:0 0 20px;}
+  .upload-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;}
+  .drop{border:1.5px dashed #C7CEDA;border-radius:8px;padding:18px;text-align:center;background:#FBFCFD;cursor:pointer;transition:border-color .15s, background .15s;}
+  .drop:hover{border-color:var(--gold);background:#FEFCF6;}
+  .drop.filled{border-color:var(--teal);background:#F2F9F8;border-style:solid;}
+  .drop .label{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:6px;}
+  .drop .fname{font-size:13.5px;color:var(--ink);font-weight:600;word-break:break-all;}
+  .drop .hint{font-size:12px;color:#98A2B3;margin-top:4px;line-height:1.45;}
+  .drop input{display:none;}
+  .btn{appearance:none;border:none;border-radius:7px;padding:11px 22px;font-family:'Inter',sans-serif;font-weight:600;font-size:13.5px;cursor:pointer;transition:transform .1s, opacity .15s;}
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{background:var(--navy);color:#fff;}
+  .btn-primary:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-primary:not(:disabled):hover{background:var(--navy-light);}
+  .btn-ghost{background:transparent;color:var(--navy);border:1px solid var(--border);}
+  .btn-ghost:hover{border-color:var(--navy);}
+  .btn-sm{padding:7px 12px;font-size:12px;}
+  .btn-row{display:flex;gap:12px;align-items:center;margin-top:20px;flex-wrap:wrap;}
+  .err{color:var(--brick);font-size:12.5px;margin-top:10px;display:none;}
+  .loaded-bar{display:none;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 20px;margin-bottom:18px;font-size:13px;gap:12px;}
+  .loaded-bar .files{color:var(--muted);}
+  .loaded-bar .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--teal);margin-right:8px;}
+  #dashboard{display:none;}
+  .hero-split{display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:26px;box-shadow:0 1px 2px rgba(20,30,50,.04);}
+  @media (max-width:1000px){.hero-split{grid-template-columns:1fr 1fr;}}
+  @media (max-width:600px){.hero-split{grid-template-columns:1fr;}}
+  .hero-half{padding:24px 26px;position:relative;color:#fff;cursor:pointer;}
+  .hero-half.cert{background:linear-gradient(135deg,var(--navy-light) 0%,var(--navy) 100%);}
+  .hero-half.paid{background:linear-gradient(135deg,#3F46A3 0%,#262B6E 100%);}
+  .hero-half.out{background:linear-gradient(135deg,var(--gold) 0%,var(--brick) 100%);}
+  .hero-half.pend{background:linear-gradient(135deg,#F3A468 0%,var(--gold) 100%);}
+  .hero-half .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;opacity:.85;margin-bottom:8px;}
+  .hero-half .big{font-family:'Fraunces',serif;font-size:34px;font-weight:700;line-height:1;margin-bottom:6px;}
+  .hero-half .sub2{font-size:12.5px;opacity:.92;line-height:1.4;}
+  .hero-bar{height:6px;background:rgba(255,255,255,.35);position:relative;margin-top:10px;}
+  .hero-bar .fill{position:absolute;left:0;top:0;bottom:0;background:#fff;}
+  .filter-bar{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:10px;}
+  .filter-field{display:flex;flex-direction:column;gap:5px;min-width:160px;flex:1;}
+  .filter-field label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;color:var(--muted);}
+  .filter-bar .btn{flex-shrink:0;}
+  .filter-field.date-range{min-width:300px;max-width:380px;flex:1.4;}
+  .filter-field select{padding:9px 11px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:'Inter',sans-serif;color:var(--ink);background:#fff;}
+  .date-pair{display:flex;align-items:center;gap:6px;}
+  .date-pair span{font-size:12px;color:var(--muted);font-weight:600;}
+  .date-pair input{flex:1;min-width:0;padding:8px 9px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:'Inter',sans-serif;color:var(--ink);background:#fff;}
+  .date-pair input:focus{outline:none;border-color:var(--gold);}
+  .date-pair .date-clear{appearance:none;border:none;background:transparent;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;padding:2px 4px;border-radius:5px;}
+  .date-pair .date-clear:hover{background:var(--navy-pale);color:var(--navy);}
+  .multiselect{position:relative;}
+  .multiselect-btn{width:100%;text-align:left;padding:9px 11px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:'Inter',sans-serif;color:var(--ink);background:#fff;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .multiselect-btn::after{content:'▾';float:right;color:var(--muted);margin-left:8px;}
+  .multiselect-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;max-width:420px;max-height:320px;overflow-y:auto;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;z-index:30;}
+  .multiselect.open .multiselect-panel{display:block;}
+  .ms-search{width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;margin-bottom:4px;font-family:'Inter',sans-serif;}
+  .ms-option{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:5px;font-size:13px;cursor:pointer;white-space:nowrap;color:var(--ink);}
+  .ms-option:hover{background:var(--navy-pale);}
+  .ms-option input{margin:0;flex-shrink:0;}
+  .ms-empty{padding:6px 8px;font-size:12.5px;color:var(--muted);}
+  .filter-busy{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-weight:600;}
+  .filter-busy .spin{width:12px;height:12px;border-width:2px;}
+  .filter-summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 2px 22px;font-size:12px;}
+  .filter-chip{background:var(--navy-pale);color:var(--navy);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-weight:600;}
+  .filter-note{color:var(--muted);}
+  .tabs{display:flex;gap:4px;margin:26px 0 22px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:20;padding-top:4px;overflow-x:auto;}
+  .tab-btn{appearance:none;border:none;background:transparent;padding:11px 20px;font-family:'Inter',sans-serif;font-weight:600;font-size:13.5px;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s, border-color .15s;white-space:nowrap;}
+  .tab-btn:hover{color:var(--navy);}
+  .tab-btn.active{color:var(--navy);border-bottom-color:var(--gold);}
+  .page{display:block;scroll-margin-top:56px;}
+  .section-title{display:flex;align-items:baseline;gap:10px;margin:34px 0 14px;}
+  .section-title h2{font-size:16px;margin:0;color:var(--navy);text-transform:uppercase;letter-spacing:.06em;}
+  .section-title .line{flex:1;height:1px;background:var(--border);}
+  .section-title.group{margin-top:48px;}
+  .section-title.group h2{font-size:21px;color:var(--gold);text-transform:none;letter-spacing:0;font-family:'Fraunces',serif;font-weight:600;}
+  .section-title.group .line{background:var(--gold);opacity:.35;}
+  .section-title.first{margin-top:0;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;}
+  @media (max-width:620px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+  .kpi-group-label{grid-column:1/-1;font-size:11px;text-transform:uppercase;letter-spacing:.05em;font-weight:700;color:var(--muted);margin:8px 2px -4px;}
+  .kpi-group-label:first-child{margin-top:2px;}
+  .kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 16px 14px;position:relative;overflow:hidden;}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold);}
+  .kpi.alert::before{background:var(--brick);}
+  .kpi .lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin-bottom:8px;}
+  .kpi .val{font-family:'Fraunces',serif;font-size:23px;font-weight:600;color:var(--navy);line-height:1.1;}
+  .kpi.alert .val{color:var(--brick);}
+  .kpi .sub{font-size:11.5px;color:var(--muted);margin-top:6px;padding-bottom:12px;line-height:1.4;}
+  .kpi .sub b{color:var(--ink);}
+  .kpi[data-drill]{cursor:pointer;transition:box-shadow .15s,border-color .15s;}
+  .kpi[data-drill]:hover{box-shadow:0 4px 14px rgba(20,30,60,.10);border-color:var(--gold);}
+  .kpi[data-drill]:hover::after{content:"View records \2192";position:absolute;right:12px;bottom:10px;font-size:10.5px;font-weight:600;color:var(--gold);}
+  .modal-overlay{position:fixed;inset:0;background:rgba(15,20,35,.5);z-index:100;display:none;align-items:center;justify-content:center;padding:24px;}
+  .modal-box{background:var(--card);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:100%;max-width:1200px;max-height:85vh;display:flex;flex-direction:column;overflow:hidden;}
+  .modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 22px;border-bottom:1px solid var(--border);}
+  .modal-header h3{margin:0 0 4px;font-family:'Fraunces',serif;font-size:19px;color:var(--navy);}
+  .modal-sub{font-size:12.5px;color:var(--muted);}
+  .modal-close{appearance:none;border:none;background:transparent;font-size:22px;line-height:1;color:var(--muted);cursor:pointer;padding:2px 6px;border-radius:6px;flex-shrink:0;}
+  .modal-close:hover{background:var(--navy-pale);color:var(--navy);}
+  .modal-search{padding:10px 22px;border-bottom:1px solid var(--border);}
+  .modal-search input{width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:'Inter',sans-serif;}
+  .modal-body{overflow:auto;padding:0 22px;flex:1;}
+  .modal-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .modal-table thead th{position:sticky;top:0;background:var(--card);text-align:right;padding:9px 8px;border-bottom:2px solid var(--border);color:var(--navy);font-weight:700;white-space:nowrap;cursor:pointer;}
+  .modal-table tbody td{padding:7px 8px;border-bottom:1px solid var(--border);white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis;}
+  .modal-table tbody tr:hover{background:var(--navy-pale);}
+  .modal-table tfoot td{padding:9px 8px;font-weight:700;background:var(--navy-pale);color:var(--navy);white-space:nowrap;position:sticky;bottom:0;}
+  .modal-empty{text-align:center !important;color:var(--muted);padding:24px 8px !important;}
+  .modal-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 22px;border-top:1px solid var(--border);}
+  .modal-count{font-size:12px;color:var(--muted);}
+  .chart-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:18px;margin-bottom:18px;}
+  .chart-grid.even{grid-template-columns:1fr 1fr;}
+  .chart-grid.one{grid-template-columns:1fr;}
+  @media (max-width:900px){.chart-grid,.chart-grid.even{grid-template-columns:1fr;}}
+  .chart-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px 20px;}
+  .chart-card h3{font-size:13.5px;margin:0 0 14px;color:var(--navy);font-weight:600;font-family:'Inter',sans-serif;}
+  .chart-card .wrap{position:relative;height:300px;}
+  .chart-card .wrap.tall{height:360px;}
+  .chart-card .wrap.xtall{height:500px;}
+  .chart-empty-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12.5px;text-align:center;padding:20px;line-height:1.5;}
+  .chart-note{margin:10px 2px 0;font-size:12px;color:var(--muted);line-height:1.5;}
+  .card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  .footer-row{display:flex;justify-content:space-between;align-items:center;margin-top:30px;flex-wrap:wrap;gap:10px;}
+  .footer-note{font-size:11.5px;color:var(--muted);}
+  .glossary{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-top:26px;font-size:12.5px;color:var(--ink);line-height:1.6;}
+  .glossary b{color:var(--navy);}
+  .glossary h3{margin:0 0 6px;font-size:14px;color:var(--navy);}
+  @media print{
+    .upload-card,.loaded-bar,.btn-row,.tabs,.filter-bar,.sync-banner{display:none !important;}
+    body{background:#fff;}
+    .chart-card,.kpi{break-inside:avoid;}
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="header-row">
+    <div class="logo-badge"><img src="data:image/jpeg;base64,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" alt="MP Developers"></div>
+    <div class="header-text">
+      <p class="eyebrow">Created by MP Developers ERP Team</p>
+      <h1>Purchase Dashboard</h1>
+    </div>
+  </div>
+  <div class="tick-rule" id="tickRule"></div>
+</header>
+<main>
+  <div class="dashboard-loading" id="dashboardLoading" style="display:none;"><span class="spin"></span>Loading dashboard data…</div>
+  <div class="last-updated-badge" id="lastUpdatedBadge" style="display:none;"></div>
+  <div class="recon" id="reconBadge" style="display:none;"></div>
+  <div class="upload-card" id="uploadCard">
+    <h2>Load the latest purchase reports</h2>
+    <p class="sub">Upload the exports from IN4 ERP. Nothing leaves your browser until you publish — the files are parsed locally.</p>
+    <div class="upload-grid">
+      <label class="drop" id="drop1">
+        <div class="label">1 &middot; All Purchase Payments Report</div>
+        <div class="fname" id="fname1">Click to choose file (.xlsx)</div>
+        <div class="hint">ERP report: PUR "All Purchase Payments Report" &mdash; one row per supplier certificate &times; PO, including Supplier Advances. Drives every figure on this dashboard.</div>
+        <input type="file" id="file1" accept=".xlsx,.xls">
+      </label>
+      <label class="drop" id="drop2">
+        <div class="label">2 &middot; Supplier Outstanding Report With Ageing <span style="text-transform:none;font-weight:500">(optional)</span></div>
+        <div class="fname" id="fname2">Click to choose file (.xlsx)</div>
+        <div class="hint">ERP report: FINANCE "Supplier Outstanding Report With Ageing" (with the Detailed sheet). Adds MSME registration numbers and cross-checks the outstanding total against Finance.</div>
+        <input type="file" id="file2" accept=".xlsx,.xls">
+      </label>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="genBtn" disabled>Generate &amp; publish dashboard</button>
+      <span class="footer-note">Upload either or both. A report you don't re-upload keeps its currently published data. Publishing updates the live dashboard for everyone with the link.</span>
+    </div>
+    <div class="err" id="errMsg"></div>
+  </div>
+  <div class="sync-banner" id="syncBanner" style="display:none;"><span class="msg" id="syncMsg"></span><button class="btn btn-primary" id="retryPublishBtn" style="display:none;">Retry publish</button></div>
+  <div class="loaded-bar" id="loadedBar">
+    <div class="files"><span class="dot"></span><span id="loadedNames"></span></div>
+    <button class="btn btn-ghost" id="changeBtn">Upload new file</button>
+  </div>
+
+  <div id="dashboard">
+    <div class="hero-split" id="heroSplit"></div>
+    <div class="filter-bar">
+      <div class="filter-field"><label>Company</label>
+        <div class="multiselect" id="fCompanyWrap"><button type="button" class="multiselect-btn">All Companies</button><div class="multiselect-panel"></div></div></div>
+      <div class="filter-field"><label>Project</label>
+        <div class="multiselect" id="fProjectWrap"><button type="button" class="multiselect-btn">All Projects</button><div class="multiselect-panel"></div></div></div>
+      <div class="filter-field"><label>Material Category</label>
+        <div class="multiselect" id="fCategoryWrap"><button type="button" class="multiselect-btn">All Categories</button><div class="multiselect-panel"></div></div></div>
+      <div class="filter-field"><label>Material</label>
+        <div class="multiselect" id="fMaterialWrap"><button type="button" class="multiselect-btn">All Materials</button><div class="multiselect-panel"></div></div></div>
+      <div class="filter-field"><label>Supplier</label>
+        <div class="multiselect" id="fSupplierWrap"><button type="button" class="multiselect-btn">All Suppliers</button><div class="multiselect-panel"></div></div></div>
+      <div class="filter-field"><label>Certificate Status</label>
+        <div class="multiselect" id="fStatusWrap"><button type="button" class="multiselect-btn">All Statuses</button><div class="multiselect-panel"></div></div></div>
+      <div class="filter-field"><label>Financial Year</label>
+        <div class="multiselect" id="fFYWrap"><button type="button" class="multiselect-btn">All Financial Years</button><div class="multiselect-panel"></div></div></div>
+      <div class="filter-field"><label>Month</label>
+        <div class="multiselect" id="fMonthWrap"><button type="button" class="multiselect-btn">All Months</button><div class="multiselect-panel"></div></div></div>
+      <div class="filter-field date-range"><label>Invoice date (from &ndash; to)</label>
+        <div class="date-pair">
+          <input type="date" id="fDateFrom" aria-label="From date" title="From date">
+          <span>to</span>
+          <input type="date" id="fDateTo" aria-label="To date" title="To date">
+          <button type="button" class="date-clear" id="fDateClear" title="Clear dates" aria-label="Clear dates">&times;</button>
+        </div></div>
+      <div class="filter-field" style="max-width:230px;"><label>"Civil" material group</label>
+        <select id="fCivilMode" title="How PO lines booked only under the generic ERP group 'Civil' are shown">
+          <option value="supplier">Classify by supplier</option>
+          <option value="erp">Show as in ERP</option>
+        </select></div>
+      <button class="btn btn-ghost" id="filterClear">Clear filters</button>
+      <span class="filter-busy" id="filterBusy" style="display:none;"><span class="spin"></span>Updating...</span>
+    </div>
+    <div class="filter-summary" id="filterSummary" style="display:none;"></div>
+
+    <div class="section-title group first"><h2>All Key Metrics</h2><div class="line"></div></div>
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-page="overview">Overview</button>
+      <button class="tab-btn" data-page="outstanding">Outstanding</button>
+      <button class="tab-btn" data-page="materials">Materials</button>
+      <button class="tab-btn" data-page="suppliers">Suppliers</button>
+      <button class="tab-btn" data-page="projects">Projects</button>
+      <button class="tab-btn" data-page="payments">Payments &amp; Advances</button>
+    </div>
+
+    <div class="page" id="page-overview">
+      <div class="section-title group first"><h2>Overview</h2><div class="line"></div></div>
+      <div class="chart-grid">
+        <div class="chart-card"><h3>Purchase value by <span class="pw">financial year</span> — paid / outstanding / in approval (₹ L, by invoice date)</h3><div class="wrap tall"><canvas id="chFY"></canvas></div></div>
+        <div class="chart-card"><h3>Purchase value by material category</h3><div class="wrap tall"><canvas id="chCatDonut"></canvas></div></div>
+      </div>
+      <div class="chart-grid one">
+        <div class="chart-card"><h3>Monthly purchase value (₹ L, by invoice date)</h3><div class="wrap"><canvas id="chMonthly"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="page" id="page-outstanding">
+      <div class="section-title group"><h2>Outstanding</h2><div class="line"></div></div>
+      <div class="chart-grid even">
+        <div class="chart-card"><h3>Outstanding by age (₹ L, days since processed by Finance)</h3><div class="wrap tall"><canvas id="chAgeing"></canvas></div>
+          <p class="chart-note">Same ageing basis as the Finance "Supplier Outstanding Report With Ageing". Click a bar for the invoices.</p></div>
+        <div class="chart-card"><h3>Outstanding vs due date (₹ L)</h3><div class="wrap tall"><canvas id="chDue"></canvas></div>
+          <p class="chart-note">Overdue = processed, unpaid and past the Due Date entered on the ERP certificate. In approval = Submitted / Approved, not yet processed by Finance.</p></div>
+      </div>
+      <div class="chart-grid even">
+        <div class="chart-card"><h3>Top 15 suppliers by outstanding — by age (₹ L)</h3><div class="wrap xtall"><canvas id="chSupOutAge"></canvas></div></div>
+        <div class="chart-card"><h3>Outstanding by material category (₹ L)</h3><div class="wrap xtall"><canvas id="chCatOut"></canvas></div></div>
+      </div>
+      <div class="chart-grid even">
+        <div class="chart-card"><h3>Top 15 materials by outstanding (₹ L)</h3><div class="wrap xtall"><canvas id="chMatOut"></canvas></div></div>
+        <div class="chart-card"><h3>Top 15 projects by outstanding (₹ L)</h3><div class="wrap xtall"><canvas id="chProjOut"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="page" id="page-materials">
+      <div class="section-title group"><h2>Materials</h2><div class="line"></div></div>
+      <div class="chart-grid even">
+        <div class="chart-card"><h3>Material category — paid / outstanding / in approval (₹ L)</h3><div class="wrap xtall"><canvas id="chCat"></canvas></div></div>
+        <div class="chart-card"><h3>Top 20 materials by purchase value — paid / outstanding / in approval (₹ L)</h3><div class="wrap xtall"><canvas id="chMat"></canvas></div></div>
+      </div>
+      <div class="chart-grid one">
+        <div class="chart-card"><h3>Category mix by <span class="pw">financial year</span> (₹ L)</h3><div class="wrap tall"><canvas id="chCatFY"></canvas></div>
+          <div class="card-head" style="margin-top:10px;"><p class="chart-note" id="matNote" style="margin:0;"></p>
+          <button class="btn btn-ghost btn-sm" id="matMasterBtn" style="flex-shrink:0;">Material name matching &rarr;</button></div></div>
+      </div>
+    </div>
+
+    <div class="page" id="page-suppliers">
+      <div class="section-title group"><h2>Suppliers</h2><div class="line"></div></div>
+      <div class="chart-grid even">
+        <div class="chart-card"><h3>Top 15 suppliers by purchase value — paid / outstanding / in approval (₹ L)</h3><div class="wrap xtall"><canvas id="chSup"></canvas></div></div>
+        <div class="chart-card"><h3>Top 15 suppliers by outstanding + in approval (₹ L)</h3><div class="wrap xtall"><canvas id="chSupOut"></canvas></div></div>
+      </div>
+      <div class="chart-grid even">
+        <div class="chart-card"><h3>Supplier concentration — share of purchase value</h3><div class="wrap tall"><canvas id="chSupConc"></canvas></div></div>
+        <div class="chart-card"><h3>MSME suppliers — outstanding (₹ L)</h3><div class="wrap tall"><canvas id="chMsme"></canvas></div>
+          <p class="chart-note" id="msmeNote"></p></div>
+      </div>
+      <p class="chart-note" id="supNote"></p>
+    </div>
+
+    <div class="page" id="page-projects">
+      <div class="section-title group"><h2>Projects</h2><div class="line"></div></div>
+      <div class="chart-grid even">
+        <div class="chart-card"><h3>Top 15 projects by purchase value — paid / outstanding / in approval (₹ L)</h3><div class="wrap xtall"><canvas id="chProj"></canvas></div></div>
+        <div class="chart-card"><h3>Purchase value by company — paid / outstanding / in approval (₹ L)</h3><div class="wrap xtall"><canvas id="chCompany"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="page" id="page-payments">
+      <div class="section-title group"><h2>Payments &amp; Advances</h2><div class="line"></div></div>
+      <div class="chart-grid even">
+        <div class="chart-card"><h3>Cash paid to suppliers by <span class="pw">financial year</span> (₹ L, by payment instrument date)</h3><div class="wrap tall"><canvas id="chPaid"></canvas></div>
+          <p class="chart-note">Invoice payments + supplier advances, dated by the latest cheque / online instrument on the certificate (processed date when none).</p></div>
+        <div class="chart-card"><h3>Certificate value by status (₹ L)</h3><div class="wrap tall"><canvas id="chStatus"></canvas></div></div>
+      </div>
+      <div class="chart-grid even">
+        <div class="chart-card"><h3>Top 15 suppliers — advance pending recovery (₹ L)</h3><div class="wrap tall"><canvas id="chAdv"></canvas></div>
+          <p class="chart-note">Advance paid (incl. TDS withheld) minus advance adjusted against that supplier's invoices.</p></div>
+        <div class="chart-card"><h3>How invoices were settled (₹ L)</h3><div class="wrap tall"><canvas id="chSettle"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="glossary">
+      <h3>How the figures are calculated</h3>
+      <b>Purchase value (certified)</b> = Total Cost of each supplier certificate (Landed Cost + Other Additions − Other Deductions), incl. GST. &nbsp;
+      <b>Paid</b> = settled against the invoice: cash paid + advance adjusted + TDS + debit notes. &nbsp;
+      <b>Outstanding</b> = processed by Finance, not yet paid (ties to the Finance Supplier Outstanding report). &nbsp;
+      <b>In approval</b> = Submitted / Approved certificates not yet processed. &nbsp;
+      <b>Yet to be paid</b> = Outstanding + In approval + approved advances not yet released. &nbsp;
+      For every filter: Purchase value = Paid + Outstanding + In approval (+ retention, if any). A certificate raised against several POs is split across those POs in proportion to each PO's net value, so nothing is counted twice. Supplier advances are shown separately and are not added to purchase value (the invoice that recovers them already carries the full value). Office purchases (Office, CBE Office, MP Guindy Office, PVT Head Office) are excluded — this dashboard covers project purchases only.
+    </div>
+
+    <div class="footer-row">
+      <span class="footer-note" id="genNote"></span>
+      <div class="btn-row" style="margin-top:0;">
+        <button class="btn btn-ghost" id="exportBtn">Download all data (.xlsx)</button>
+        <button class="btn btn-ghost" id="printBtn">Print report</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div class="modal-overlay" id="drillOverlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div><h3 id="drillTitle"></h3><div class="modal-sub" id="drillSub"></div></div>
+      <button type="button" class="modal-close" id="drillClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-search"><input type="text" id="drillSearch" placeholder="Search supplier, material, PO, certificate, invoice no, project..."></div>
+    <div class="modal-body">
+      <table class="modal-table">
+        <thead><tr id="drillThead"></tr></thead>
+        <tbody id="drillTbody"></tbody>
+        <tfoot><tr id="drillTfoot"></tr></tfoot>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <span class="modal-count" id="drillCount"></span>
+      <button type="button" class="btn btn-primary" id="drillDownload">Download Excel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){ let h=''; for(let i=0;i<40;i++) h+='<i></i>'; document.getElementById('tickRule').innerHTML=h; })();
+if(typeof Chart!=='undefined'){ Chart.defaults.animation = false; Chart.defaults.font.family = "'Inter', sans-serif"; }
+
+/* ============ FIRESTORE ============
+   Stored in the SAME collection as the Sales & CRM and Marketing dashboards ('dashboardData'), which the
+   existing Firestore rules already allow, under its own document ids — every id starts with 'pur_'
+   (pur_meta, pur_chunk_<key>_<n>). Sales reads 'meta'/'chunk_*', Marketing 'mkt_*', so the dashboards never
+   read or overwrite each other's data. */
+const DOC_PREFIX = 'pur_';
+const firebaseConfig = {
+  apiKey: "AIzaSyC65rACXQiJMzwN0dbTgxIns0Ggn6Myl0I",
+  authDomain: "mp-dashboard-f9bf5.firebaseapp.com",
+  projectId: "mp-dashboard-f9bf5",
+  storageBucket: "mp-dashboard-f9bf5.firebasestorage.app",
+  messagingSenderId: "717474685347",
+  appId: "1:717474685347:web:47075db36ddd4781267a16",
+  measurementId: "G-PLN09Z00JG"
+};
+let db = null, DASH_COL = null;
+try{
+  if(typeof firebase !== 'undefined'){
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    db.enablePersistence().catch(err=>console.warn('Firestore persistence not enabled:', err.code||err.message));
+    DASH_COL = db.collection('dashboardData');
+  }
+}catch(e){ console.warn('Firebase unavailable — running in local-only mode', e); }
+
+const RAW_KEYS = ['lines','fin'];
+let RAW = { lines: [], fin: [] };
+let U = { inv: [], adv: [], matMaster: [], finTotal:0, finCount:0 };
+let lastPublished = null;
+const charts = {};
+
+/* ============ MASTER DATA ============ */
+// Same project consolidation as the Sales & CRM and Marketing dashboards, so a project reads the same everywhere.
+const PROJECT_NAME_OVERRIDE = {
+  'MP Pastel Petals':'Petals Phase II','MP Pave Petals':'Petals Phase II','MP Pear Petals':'Petals Phase II',
+  'MP Pearl Petals':'Petals Phase II','MP Prism Petals':'Petals Phase II','MP Puro Petals':'Petals Phase II',
+  'MP Pace Petals':'Petals Phase II','MP Palm Petals':'Petals Phase II','MP Paradise Petals':'Petals Phase II',
+  'MP Peach Petals':'Petals Phase II',
+  'MP Azure':'MP Green Bay','MP Basil':'MP Green Bay','MP Bayleaf':'MP Green Bay','MP Cascade':'MP Green Bay',
+  'MP Cedars':'MP Green Bay','MP Cilantro':'MP Green Bay','MP Oasis':'MP Green Bay','MP Orchid':'MP Green Bay',
+  'MP Magnus':'MP Green Bay CMDA','MP Merlin':'MP Green Bay CMDA',
+};
+function normalizeProjectName(name){
+  const t = (name===null||name===undefined) ? '' : (''+name).trim();
+  if(!t) return 'Unspecified';
+  if(PROJECT_NAME_OVERRIDE[t]) return PROJECT_NAME_OVERRIDE[t];
+  const k = Object.keys(PROJECT_NAME_OVERRIDE).find(x=>x.toLowerCase()===t.toLowerCase());
+  return k ? PROJECT_NAME_OVERRIDE[k] : t;
+}
+function shortCompany(c){
+  const t = (c||'').toString().trim();
+  if(/constructions/i.test(t)) return 'MP Developers & Constructions Pvt Ltd';
+  if(/^mp developers$/i.test(t)) return 'MP Developers';
+  if(/chiron/i.test(t)) return 'Chiron Property';
+  if(/land promoters/i.test(t)) return 'MP Land Promoters LLP';
+  return t || 'Unspecified';
+}
+
+/* ---- Material master ----
+   The ERP "Material/Asset Type" field is the PO's material group. The same material is often keyed with
+   different spellings (typos, plurals, "Safety" vs "Safety & Equipments", steel by diameter …). Every ERP name
+   is matched to ONE standard material and ONE category below. Rules are tested in order; the first match wins.
+   An ERP name that matches no rule is kept under its own name in "Other / Unmapped" and listed in the
+   Material Master drill-down, so a new spelling is visible rather than silently mis-filed. */
+const MATERIAL_RULES = [
+  // [regex on the normalised name, standard material, category]
+  [/^steel|^tmt|^rod\b|^bar\b/,                 'TMT Steel Bars',          'Steel & Reinforcement'],
+  [/binding ?wire/,                              'Binding Wire',            'Steel & Reinforcement'],
+  [/cover ?block/,                               'Cover Block',             'Steel & Reinforcement'],
+  [/^rmc$|ready ?mix|concrete/,                  'Ready-Mix Concrete (RMC)','Cement & Concrete'],
+  [/cement/,                                     'Cement',                  'Cement & Concrete'],
+  [/jelly|jalli|blue ?metal|aggregate/,          '20mm Jelly (Aggregate)',  'Aggregates & Sand'],
+  [/^m ?sand|manufactured sand/,                 'M Sand',                  'Aggregates & Sand'],
+  [/^p ?sand|plaster(ing)? sand/,                'P Sand',                  'Aggregates & Sand'],
+  [/filling sand|^sand$/,                        'Filling Sand',            'Aggregates & Sand'],
+  [/rubbish|rubble/,                             'Rubble',                  'Aggregates & Sand'],
+  [/brick|block|aac/,                            'Bricks & Blocks',         'Bricks & Blocks'],
+  [/electrical roof/,                            'Electrical Roof',         'Electrical'],
+  [/electronic/,                                 'Electronics Accessories', 'Electrical'],
+  [/cctv/,                                       'CCTV',                    'Electrical'],
+  [/generator|^dg\b/,                            'Generator',               'Electrical'],
+  [/electric/,                                   'Electrical',              'Electrical'],
+  [/borewell|bore ?well/,                        'Borewell',                'Plumbing & Sanitary'],
+  [/sanitary/,                                   'Sanitary',                'Plumbing & Sanitary'],
+  [/water analy/,                                'Water Analysis',          'Plumbing & Sanitary'],
+  [/plumb/,                                      'Plumbing',                'Plumbing & Sanitary'],
+  [/tile/,                                       'Tiles',                   'Flooring & Tiles'],
+  [/granite/,                                    'Granite',                 'Flooring & Tiles'],
+  [/cudd?app?ah/,                                'Cuddappah Stone',         'Flooring & Tiles'],
+  [/flooring/,                                   'Flooring',                'Flooring & Tiles'],
+  [/paint/,                                      'Paint',                   'Painting & Finishes'],
+  [/wall ?paper/,                                'Wallpaper',               'Painting & Finishes'],
+  [/upvc|u ?pvc/,                                'UPVC Windows',            'Doors, Windows & Metal'],
+  [/door|window/,                                'Doors & Windows',         'Doors, Windows & Metal'],
+  [/grill/,                                      'Grills',                  'Doors, Windows & Metal'],
+  [/hand ?rail/,                                 'Hand Rail',               'Doors, Windows & Metal'],
+  [/carpent/,                                    'Carpentry',               'Doors, Windows & Metal'],
+  [/^lift|elevator/,                             'Lift',                    'Lifts'],
+  [/elevation/,                                  'Elevation',               'Civil Works & Site'],
+  [/site establishment/,                         'Site Establishment',      'Civil Works & Site'],
+  [/infra/,                                      'Infra Development',       'Civil Works & Site'],
+  [/container/,                                  'Site Container',          'Civil Works & Site'],
+  [/landscape/,                                  'Landscape',               'Civil Works & Site'],
+  [/^civil/,                                     'Civil (general)',         'Civil Works & Site'],
+  [/intangible/,                                 'Intangible Asset',        'Fixed Assets & IT'],
+  [/licen[cs]e|software|in4/,                    'Software Licence',        'Fixed Assets & IT'],
+  [/desktop|laptop|computer/,                    'Computers',               'Fixed Assets & IT'],
+  [/long term/,                                  'Long-Term Assets',        'Fixed Assets & IT'],
+  [/asset/,                                      'Fixed Assets',            'Fixed Assets & IT'],
+  [/furniture|chair|chari/,                      'Furniture & Chairs',      'Furniture & Stationery'],
+  [/craft|photo/,                                'Crafts & Photos',         'Furniture & Stationery'],
+  [/stationa?e?ry/,                              'Stationery',              'Furniture & Stationery'],
+  [/safety/,                                     'Safety Equipment',        'Consumables & Safety'],
+  [/^c?onsumable/,                               'Consumables',             'Consumables & Safety'],
+  [/sponge/,                                     'Sponge',                  'Consumables & Safety'],
+  [/^bags?$/,                                    'Bags',                    'Consumables & Safety'],
+  [/^pol$|fuel|diesel/,                          'POL (Fuel & Lubricants)', 'Consumables & Safety'],
+  [/signage/,                                    'Signage',                 'Consumables & Safety'],
+  [/rental|hire/,                                'Rental',                  'Services & Rentals'],
+  [/service/,                                    'Service',                 'Services & Rentals'],
+];
+const CAT_OTHER = 'Other / Unmapped', CAT_MULTI = 'Multiple categories (combined PO)';
+function normMatName(s){ return (s||'').toString().toLowerCase().replace(/[^a-z0-9& ]+/g,' ').replace(/\s+/g,' ').trim(); }
+function canonMaterial(erpName){
+  const n = normMatName(erpName);
+  if(!n) return null;
+  for(const [re, mat, cat] of MATERIAL_RULES) if(re.test(n)) return {material:mat, category:cat};
+  const t = (''+erpName).trim();
+  return {material: t.charAt(0).toUpperCase()+t.slice(1), category: CAT_OTHER};
+}
+// One PO line can carry several material groups ("20mm Jelly,M Sand"). The ERP does not split the value by
+// material, so the line keeps ONE combined label (e.g. "20mm Jelly (Aggregate) + M Sand") — values are never
+// guessed or divided. Category is the common category when all parts share one, else "Multiple categories".
+function classifyMaterial(raw){
+  const parts = (raw||'').toString().split(',').map(s=>s.trim()).filter(Boolean);
+  const seen = new Map();
+  parts.forEach(p=>{ const c = canonMaterial(p); if(c && !seen.has(c.material)) seen.set(c.material, c); });
+  const list = [...seen.values()];
+  if(!list.length) return {material:'Unspecified', category:CAT_OTHER, materials:['Unspecified'], multi:false};
+  const mats = list.map(c=>c.material).sort((a,b)=>a.localeCompare(b));
+  const cats = [...new Set(list.map(c=>c.category))];
+  return { material: mats.join(' + '), category: cats.length===1 ? cats[0] : CAT_MULTI, materials: mats, categories: cats, multi: mats.length>1 };
+}
+
+/* ---- Supplier matching ----
+   Same supplier, different spellings ("KUBER AGENCIES" / "Kuber Agencies", "M.S. ENGINEERING" / "MS Engineering")
+   are merged by GSTIN when the ERP has one, otherwise by name ignoring case, punctuation and Pvt/Ltd suffixes. */
+function vendorNameKey(n){ return (n||'').toLowerCase().replace(/\b(m\/s|pvt|private|ltd|limited|llp|the)\b/g,'').replace(/[^a-z0-9]/g,'') || 'unspecified'; }
+
+/* ============ PARSING ============ */
+function normH(v){ return (v===null||v===undefined?'':''+v).replace(/\s+/g,' ').trim().toLowerCase(); }
+function num(v){
+  if(v===null||v===undefined||v==='') return 0;
+  if(typeof v==='number') return isFinite(v)?v:0;
+  const n = parseFloat((''+v).replace(/[,₹\s]/g,''));
+  return isNaN(n)?0:n;
+}
+function excelSerialToDate(serial){
+  if(typeof XLSX!=='undefined' && XLSX.SSF && XLSX.SSF.parse_date_code){
+    const d = XLSX.SSF.parse_date_code(serial);
+    if(d) return new Date(d.y, d.m-1, d.d);
+  }
+  return new Date(Math.round((serial-25569)*86400*1000));
+}
+const MON = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function parseDateAny(v){
+  if(v===null||v===undefined||v==='') return null;
+  let d = null;
+  if(v instanceof Date) d = new Date(v.getFullYear(), v.getMonth(), v.getDate());
+  else if(typeof v==='number' && isFinite(v)) d = excelSerialToDate(v);
+  else if(typeof v==='string'){
+    const s = v.trim();
+    let m = s.match(/^([A-Za-z]{3})[a-z]*\s+(\d{1,2}),?\s*(\d{4})$/);            // "Sep 11, 2023" (ERP format)
+    if(m && MON[m[1].toLowerCase()]!==undefined) d = new Date(+m[3], MON[m[1].toLowerCase()], +m[2]);
+    else if((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) d = new Date(+m[1], +m[2]-1, +m[3]);    // ISO (stored form)
+    else if((m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/))) d = new Date(+m[3], +m[2]-1, +m[1]); // dd/mm/yyyy
+    else if(s){ const t = new Date(s); if(!isNaN(t)) d = t; }
+  }
+  return (d && !isNaN(d.getTime())) ? d : null;
+}
+function toISO(v){
+  const d = parseDateAny(v); if(!d) return '';
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function fyOf(iso){
+  const d = parseDateAny(iso); if(!d) return null;
+  const y = d.getFullYear(), m = d.getMonth()+1, start = m>=4 ? y : y-1;
+  return { label:'FY'+start+'-'+String(start+1).slice(-2), sortKey:start };
+}
+function monthOf(iso){
+  const d = parseDateAny(iso); if(!d) return null;
+  return { key: d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'), label: d.toLocaleString('en-IN',{month:'short',year:'numeric'}), fy: fyOf(iso) };
+}
+function sheetRows(ws){ return XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null}); }
+function headerMap(rows, mustHave){
+  const idx = rows.findIndex(r => r && mustHave.every(h => r.some(c => normH(c)===h)));
+  if(idx<0) return null;
+  const col = {};
+  rows[idx].forEach((v,i)=>{ const t=normH(v); if(t && col[t]===undefined) col[t]=i; });
+  return { idx, col };
+}
+// Column lookup that tolerates the ERP's "(A)", "(K-L)" suffixes and line breaks in headers.
+function colFinder(col){
+  const keys = Object.keys(col);
+  return (...names) => {
+    for(const n of names){ if(col[n]!==undefined) return col[n]; }
+    for(const n of names){ const k = keys.find(k=>k.replace(/\s*\(.*?\)\s*/g,' ').trim()===n); if(k) return col[k]; }
+    for(const n of names){ const k = keys.find(k=>k.startsWith(n)); if(k) return col[k]; }
+    return undefined;
+  };
+}
+
+/* ---- Report 1: All Purchase Payments Report (PUR) ----
+   One row per certificate × PO. A certificate raised against several POs repeats on every PO row with the
+   SAME certificate-level Inv. Amt / Net Payable / Paid / Outstanding, while Base / Total Cost are per PO.
+   Raw rows are stored exactly as exported; buildUnified() splits the certificate-level amounts across its
+   PO rows so nothing is counted twice. */
+function parsePayments(wb){
+  const ws = wb.Sheets[wb.SheetNames.find(s=>/payment/i.test(s)) || wb.SheetNames[0]];
+  const rows = sheetRows(ws);
+  const h = headerMap(rows, ['company','certificate type']);
+  if(!h) throw new Error('Could not find the header row (COMPANY … Certificate Type …) in the All Purchase Payments report');
+  const c = colFinder(h.col), out = [];
+  const I = {
+    company:c('company'), project:c('project'), subproject:c('subproject'), po:c('po. no.','po no'), type:c('certificate type'),
+    certNo:c('cert. no.','cert no'), created:c('creation date'), approved:c('approved date'), processed:c('processed date'), due:c('due date'),
+    status:c('status'), vendor:c('vendor name'), gstin:c('gstin'), material:c('material/asset type'), invNo:c('inv. no','inv no'), invDate:c('inv. date','inv date'),
+    invAmt:c('inv. amt','inv amt'), base:c('base amt'), taxAdd:c('tax additions'), taxDed:c('tax deductions'), otherCh:c('other charges'),
+    totalCost:c('total cost'), advRec:c('adv recovered'), dnRec:c('debit note recovered'), retention:c('retention amount'),
+    payable:c('net. payable amt','net payable amt'), paid:c('paid amt'), outstanding:c('outstanding amt'), favouring:c('favouring'), remarks:c('remarks'), instrument:c('instrument no. / instrument date'),
+  };
+  ['certNo','vendor','totalCost','payable','paid','outstanding','type'].forEach(k=>{ if(I[k]===undefined) throw new Error('Column "'+k+'" not found in the All Purchase Payments report'); });
+  const g = (r,k) => I[k]===undefined ? null : r[I[k]];
+  const s = v => (v===null||v===undefined) ? '' : (''+v).replace(/\s+/g,' ').trim();
+  for(let i=h.idx+1;i<rows.length;i++){
+    const r = rows[i]; if(!r) continue;
+    if(!(+g(r,'certNo'))) continue;                       // skips blank / grand-total rows
+    out.push({
+      company:s(g(r,'company')), project:s(g(r,'project')), subproject:s(g(r,'subproject')), po:s(g(r,'po')),
+      type: /advance/i.test(s(g(r,'type'))) ? 'ADV' : 'INV', certNo:num(g(r,'certNo')),
+      created:toISO(g(r,'created')), approved:toISO(g(r,'approved')), processed:toISO(g(r,'processed')), due:toISO(g(r,'due')),
+      status:s(g(r,'status')) || 'Unspecified', vendor:s(g(r,'vendor')) || 'Unspecified', gstin:s(g(r,'gstin')).toUpperCase(),
+      material:s(g(r,'material')), invNo:s(g(r,'invNo')), invDate:toISO(g(r,'invDate')),
+      invAmt:num(g(r,'invAmt')), base:num(g(r,'base')), taxAdd:num(g(r,'taxAdd')), taxDed:num(g(r,'taxDed')), otherCh:num(g(r,'otherCh')),
+      totalCost:num(g(r,'totalCost')), advRec:num(g(r,'advRec')), dnRec:num(g(r,'dnRec')), retention:num(g(r,'retention')),
+      payable:num(g(r,'payable')), paid:num(g(r,'paid')), outstanding:num(g(r,'outstanding')),
+      remarks:s(g(r,'remarks')), instrument:s(g(r,'instrument')),
+    });
+  }
+  return out;
+}
+
+/* ---- Report 2: Supplier Outstanding Report With Ageing (FINANCE) — optional ----
+   Detailed sheet: one row per outstanding certificate. Used for MSME registration numbers and as an
+   independent cross-check: its Outstanding total must equal the dashboard's processed outstanding. */
+function parseFinanceOutstanding(wb){
+  let best = null;
+  wb.SheetNames.forEach(n=>{
+    const rows = sheetRows(wb.Sheets[n]);
+    const h = headerMap(rows, ['certificate id','outstanding amt']);
+    if(h && !best) best = {rows, h};
+  });
+  if(!best) throw new Error('Could not find the detailed sheet (with "Certificate ID" and "Outstanding Amt") in the Supplier Outstanding report');
+  const {rows, h} = best, c = colFinder(h.col), out = [];
+  const I = { company:c('company'), vendor:c('vendor'), msme:c('msme no'), po:c('workorder/po display no'), project:c('project'),
+    invNo:c('invoice no'), invDate:c('invoice date'), certId:c('certificate id'), processed:c('processed date'),
+    gross:c('gross amt'), payable:c('payable amt'), paid:c('paid amt'), outstanding:c('outstanding amt'),
+    b0:c('0-30 days'), b1:c('31-60'), b2:c('61-90'), b3:c('91-180'), b4:c('>180') };
+  const g = (r,k) => I[k]===undefined ? null : r[I[k]];
+  const s = v => (v===null||v===undefined) ? '' : (''+v).replace(/\s+/g,' ').trim();
+  for(let i=h.idx+1;i<rows.length;i++){
+    const r = rows[i]; if(!r || !(+g(r,'certId'))) continue;
+    out.push({ company:s(g(r,'company')), vendor:s(g(r,'vendor')), msme:s(g(r,'msme')), po:s(g(r,'po')), project:s(g(r,'project')),
+      invNo:s(g(r,'invNo')), invDate:toISO(g(r,'invDate')), certId:num(g(r,'certId')), processed:toISO(g(r,'processed')),
+      gross:num(g(r,'gross')), payable:num(g(r,'payable')), paid:num(g(r,'paid')), outstanding:num(g(r,'outstanding')),
+      b:[num(g(r,'b0')),num(g(r,'b1')),num(g(r,'b2')),num(g(r,'b3')),num(g(r,'b4'))] });
+  }
+  return out;
+}
+
+/* ============ UNIFY ============
+   Every PO line becomes one record with these amounts (₹):
+     certified   = Total Cost (G = Landed + Other Additions − Other Deductions) — the invoice value booked
+     outstanding = Net Payable − Paid, split across the certificate's PO lines
+       • osProcessed : certificate processed by Finance, not yet paid  (= Finance Outstanding report)
+       • osPending   : Submitted / Approved, not yet processed       (= in approval)
+     paid        = certified − outstanding − retention  — settled: cash + advance adjusted + debit note + TDS
+     cashPaid    = Paid Amt (L), split across PO lines
+   Identity for every line and every filter:  Certified = Paid + Outstanding + Retention.
+   Supplier advances are NOT purchases (the invoice that later recovers them already carries the full value);
+   they feed only the advance tiles, so nothing is counted twice. */
+const STATUS_ORDER = ['Paid','Partially Paid','Processed','Approved','Submitted'];
+// Latest payment-instrument date ("# Online Dt. Aug 05, 2024(Cleared) , …") — the date money actually went out.
+function lastInstrumentDate(s){
+  let best = '';
+  (s||'').replace(/Dt\.\s*([A-Za-z]{3}\s+\d{1,2},\s*\d{4})/g, (_,d)=>{ const iso = toISO(d); if(iso > best) best = iso; return _; });
+  return best;
+}
+function allocShares(lines){
+  if(lines.length===1) return [1];
+  const net = lines.map(l=>l.totalCost - l.advRec - l.dnRec - l.retention - l.taxDed);
+  const tn = net.reduce((a,b)=>a+b,0);
+  if(Math.abs(tn) > 0.5 && net.every(v=>v>=-0.5)) return net.map(v=>v/tn);
+  const tc = lines.map(l=>l.totalCost), tt = tc.reduce((a,b)=>a+b,0);
+  if(Math.abs(tt) > 0.5) return tc.map(v=>v/tt);
+  return lines.map(()=>1/lines.length);
+}
+const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/;
+const validGstin = g => GSTIN_RE.test(g||'') ? g : '';
+/* ---- "Civil" material group: classify by supplier ----
+   Half the purchase value is booked under the generic ERP group "Civil", even when the supplier is a steel mill,
+   cement dealer or RMC plant. For lines whose ERP group is ONLY "Civil", the dashboard can show the supplier's
+   material instead (toggle "Civil group" in the filter bar). Basis, in order:
+     1. the supplier's own non-Civil purchases: if ≥75% of that value is one category, use it;
+     2. otherwise a clear keyword in the supplier name (steel / cement / concrete / blue metal / bricks …);
+     3. otherwise the line stays "Civil (general)".
+   Every such line is marked "Classified by supplier" in the drill-downs and exports. */
+const SUPPLIER_KEYWORDS = [
+  [/blue ?metal|jelly|\bsand\b|aggregate/i, 'Aggregates & Sand – mixed items', 'Aggregates & Sand'],
+  [/steel|metal|alloy|ferro|\btmt\b|iron/i, 'TMT Steel Bars', 'Steel & Reinforcement'],
+  [/cement/i,                               'Cement', 'Cement & Concrete'],
+  [/ready ?mix|\brmc\b|concrete(?! products)/i, 'Ready-Mix Concrete (RMC)', 'Cement & Concrete'],
+  [/brick|block|aercon|fly ?ash|\baac\b/i,  'Bricks & Blocks', 'Bricks & Blocks'],
+];
+function civilInference(inv){
+  const sup = {};
+  inv.forEach(r=>{ if(r.matErp==='Civil (general)' || r.catErp==='Civil Works & Site' || r.catErp===CAT_MULTI || r.catErp===CAT_OTHER) return;
+    const s = sup[r.supplierKey] = sup[r.supplierKey] || {tot:0, cat:{}, mat:{}};
+    s.tot += r.certified; s.cat[r.catErp]=(s.cat[r.catErp]||0)+r.certified; s.mat[r.matErp]=(s.mat[r.matErp]||0)+r.certified; });
+  const pick = {};
+  const top = o => Object.entries(o).sort((a,b)=>b[1]-a[1])[0];
+  inv.forEach(r=>{
+    if(r.matErp!=='Civil (general)' || pick[r.supplierKey]!==undefined) return;
+    const s = sup[r.supplierKey]; let res = null;
+    if(s && s.tot>0){
+      const [c,cv] = top(s.cat);
+      if(cv/s.tot >= 0.75){
+        const [m,mv] = top(Object.fromEntries(Object.entries(s.mat).filter(([m])=>{ const cc = classifyMaterial(m.split(' + ').join(',')); return cc.category===c; })));
+        res = {material: (mv/cv>=0.75 && !m.includes(' + ')) ? m : c+' – mixed items', category:c, how:'supplier history'};
+      }
+    }
+    if(!res){ const k = SUPPLIER_KEYWORDS.find(([re])=>re.test(r.supplier)); if(k) res = {material:k[1], category:k[2], how:'supplier name'}; }
+    pick[r.supplierKey] = res;
+  });
+  inv.forEach(r=>{
+    const p = r.matErp==='Civil (general)' ? pick[r.supplierKey] : null;
+    r.matInf = p ? p.material : r.matErp; r.catInf = p ? p.category : r.catErp;
+    r.matsInf = p ? [p.material] : r.matsErp;
+    r.basis = p ? 'Classified by supplier ('+p.how+')' : 'ERP material group';
+  });
+}
+/* ---- Excluded from the dashboard ----
+   Office purchases are not residential-project purchases, and the closed company is not to be shown anywhere.
+   Rows are kept in the stored ERP data but dropped here, before any total, chart, filter or export is built.
+   Matching ignores case and extra spaces; a closed company's projects go with it. */
+const EXCLUDED_PROJECTS = ['Office','CBE OFFICE','MP Guindy Office','PVT Head Office'];
+const EXCLUDED_COMPANIES = [/chiron/i];
+const _exProj = new Set(EXCLUDED_PROJECTS.map(p=>p.toLowerCase().replace(/\s+/g,' ').trim()));
+function isExcluded(company, project){
+  if(EXCLUDED_COMPANIES.some(re=>re.test(company||''))) return true;
+  return _exProj.has((project||'').toLowerCase().replace(/\s+/g,' ').trim());
+}
+function buildUnifiedFrom(RAW){
+  const lines = (RAW.lines || []).filter(l=>!isExcluded(l.company, l.project));
+  const fin = (RAW.fin || []).filter(f=>!isExcluded(f.company, f.project));
+  // --- supplier identity: GSTIN first; the same name with a GSTIN differing by one character (a keying slip)
+  //     is merged too; same name with a genuinely different GSTIN (different PAN) stays a separate supplier ---
+  const parent = {};
+  const find = k => { while(parent[k]!==k) k = parent[k] = parent[parent[k]]; return k; };
+  const unite = (a,b) => { a=find(a); b=find(b); if(a!==b) parent[b]=a; };
+  const keyOf = l => validGstin(l.gstin) ? 'G:'+validGstin(l.gstin) : 'N:'+vendorNameKey(l.vendor);
+  const byName = {};
+  lines.forEach(l=>{ const k = keyOf(l); if(parent[k]===undefined) parent[k]=k; const n = vendorNameKey(l.vendor); (byName[n]=byName[n]||new Set()).add(k); });
+  const dist = (a,b) => { if(a.length!==b.length) return 99; let d=0; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) d++; return d; };
+  Object.values(byName).forEach(set=>{
+    const ks = [...set], g = ks.filter(k=>k.startsWith('G:')), n = ks.filter(k=>k.startsWith('N:'));
+    if(g.length===1) n.forEach(k=>unite(g[0],k));            // blank-GSTIN rows of a supplier that has one GSTIN
+    for(let i=0;i<g.length;i++) for(let j=i+1;j<g.length;j++) if(dist(g[i],g[j])<=1) unite(g[i],g[j]);
+    if(!g.length) n.forEach(k=>unite(n[0],k));
+  });
+  const vKey = l => find(keyOf(l));
+  const spell = {};
+  lines.forEach(l=>{ const k = vKey(l); (spell[k]=spell[k]||{}); spell[k][l.vendor]=(spell[k][l.vendor]||0)+Math.abs(l.totalCost)+1e-6; });
+  const vName = {}, vAlias = {};
+  Object.entries(spell).forEach(([k,m])=>{ const e = Object.entries(m).sort((a,b)=>b[1]-a[1]); vName[k]=e[0][0]; vAlias[k]=e.slice(1).map(x=>x[0]).filter(x=>x!==e[0][0]); });
+  // two different suppliers that would read the same → add the GSTIN tail so they can be told apart
+  const dispCount = {}; Object.keys(vName).forEach(k=>{ const d=vendorNameKey(vName[k]); dispCount[d]=(dispCount[d]||0)+1; });
+  Object.keys(vName).forEach(k=>{ if(dispCount[vendorNameKey(vName[k])]>1 && k.startsWith('G:')) vName[k] += ' (GST …'+k.slice(-6)+')'; });
+  // --- MSME (from the Finance report, matched by supplier name key) ---
+  // MSME: a supplier is MSME when any of its certificates appears in the Finance report with an Udyam number;
+  // suppliers with nothing outstanding are matched by name, but only when that name belongs to one supplier.
+  const finByCert = {}; fin.forEach(f=>{ finByCert[f.certId] = f; });
+  const msmeByKey = {};
+  lines.forEach(l=>{ const f = l.type==='INV' && finByCert[l.certNo]; if(f && f.msme) msmeByKey[vKey(l)] = f.msme; });
+  const keysByName = {}; Object.keys(spell).forEach(k=>Object.keys(spell[k]).forEach(nm=>{ const n=vendorNameKey(nm); const a=(keysByName[n]=keysByName[n]||[]); if(!a.includes(k)) a.push(k); }));
+  fin.forEach(f=>{ if(!f.msme) return; const ks = keysByName[vendorNameKey(f.vendor)]; if(ks && ks.length===1 && !msmeByKey[ks[0]]) msmeByKey[ks[0]] = f.msme; });
+  // --- group lines into certificates ---
+  const groups = new Map();
+  lines.forEach(l=>{ const k = l.type+'|'+l.certNo; if(!groups.has(k)) groups.set(k, []); groups.get(k).push(l); });
+  const inv = [], adv = [], matSeen = {};
+  groups.forEach((ls)=>{
+    const shares = allocShares(ls);
+    ls.forEach((l,i)=>{
+      const sh = shares[i];
+      const k = vKey(l);
+      const cls = classifyMaterial(l.material);
+      (l.material||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(p=>{ const c = canonMaterial(p); const m = matSeen[p] = matSeen[p] || {erp:p, material:c.material, category:c.category, lines:0, certified:0}; m.lines++; m.certified += l.type==='INV' ? l.totalCost : 0; });
+      const payable = l.payable*sh, cashPaid = l.paid*sh, os = l.outstanding*sh;
+      const processed = !!l.processed;
+      const rec = {
+        type:l.type, certNo:l.certNo, certRef:(l.type==='ADV'?'ADV-':'CERT-')+l.certNo, po:l.po || '—', lines:ls.length,
+        company:shortCompany(l.company), project:normalizeProjectName(l.project), projectErp:l.project || '—', subproject:l.subproject,
+        supplierKey:k, supplier:vName[k], gstin:validGstin(l.gstin) || (k.startsWith('G:') ? k.slice(2) : ''), supplierAlias:vAlias[k].join(', '),
+        msme: msmeByKey[k] || '',
+        materialErp:l.material || '—', matErp:cls.material, catErp:cls.category, matsErp:cls.materials, multiMaterial:cls.multi,
+        status:l.status, created:l.created, approved:l.approved, processed:l.processed, due:l.due,
+        invNo:l.invNo, invDate:l.invDate, date: l.type==='INV' ? (l.invDate || l.created) : (l.created || l.invDate),
+        invAmtCert:l.invAmt, payableCert:l.payable, paidCert:l.paid, osCert:l.outstanding,
+        base:l.base, gst:l.taxAdd, tds:l.taxDed, otherCh:l.otherCh, retention:l.retention, advAdjusted:l.advRec, debitNote:l.dnRec,
+        payable, cashPaid, outstanding:os,
+        osProcessed: processed ? os : 0, osPending: processed ? 0 : os,
+        instrument:l.instrument, remarks:l.remarks, payDate: lastInstrumentDate(l.instrument) || l.processed,
+      };
+      if(l.type==='INV'){
+        rec.certified = l.totalCost;
+        rec.paid = l.totalCost - os - l.retention;                     // settled
+        rec.otherSettled = rec.paid - cashPaid - l.advRec - l.dnRec;    // TDS & other deductions settled
+        const f = finByCert[l.certNo]; rec.finOutstanding = f ? f.outstanding*sh : 0;
+        inv.push(rec);
+      } else {
+        // Advance value released = paid share of the advance, grossed up for TDS withheld on it.
+        rec.requested = l.totalCost;
+        rec.given = payable > 0.5 ? l.totalCost * (cashPaid/payable) : (os<0.5 ? l.totalCost : 0);
+        rec.advTds = rec.given - cashPaid;
+        rec.unpaid = os;
+        adv.push(rec);
+      }
+    });
+  });
+  civilInference(inv);
+  adv.forEach(r=>{ r.matInf=r.matErp; r.catInf=r.catErp; r.matsInf=r.matsErp; r.basis='ERP material group'; });
+  const matMaster = Object.values(matSeen).sort((a,b)=>a.category.localeCompare(b.category)||a.material.localeCompare(b.material)||a.erp.localeCompare(b.erp));
+  return { inv, adv, matMaster, finTotal: fin.reduce((a,f)=>a+f.outstanding,0), finCount: fin.length, finCertIds: new Set(fin.map(f=>f.certId)) };
+}
+if(typeof module!=='undefined') module.exports = { isExcluded, parsePayments, parseFinanceOutstanding, buildUnifiedFrom, classifyMaterial, canonMaterial, toISO, fyOf };
+
+
+/* ============ PUBLISH / LOAD (chunked, same approach as Sales & Marketing) ============
+   Rows are stored column-packed ({f:[field names], r:[[values]…]}) to halve the size in Firestore. */
+const CHUNK_MAX = 900000, BATCH_MAX = 8000000;
+const u8len = s => new TextEncoder().encode(s).length;
+function packRows(rows){
+  if(!rows.length) return {f:[], r:[]};
+  const f = Object.keys(rows[0]);
+  rows.forEach(o=>Object.keys(o).forEach(k=>{ if(!f.includes(k)) f.push(k); }));
+  return { f, r: rows.map(o=>f.map(k=>o[k]===undefined?null:o[k])) };
+}
+function unpackRows(p){
+  if(Array.isArray(p)) return p;                    // tolerate an unpacked array
+  if(!p || !p.f) return [];
+  return p.r.map(a=>{ const o={}; p.f.forEach((k,i)=>o[k]=a[i]); return o; });
+}
+function splitChunks(str){
+  const parts=[]; let i=0;
+  if(!str.length) return [''];
+  while(i<str.length){
+    let end = Math.min(str.length, i+CHUNK_MAX);
+    while(end>i+1 && u8len(str.slice(i,end))>CHUNK_MAX) end = i+Math.max(1,Math.floor((end-i)*0.9));
+    parts.push(str.slice(i,end)); i=end;
+  }
+  return parts;
+}
+const IDB_NAME = 'mpPurchaseDashboard', IDB_STORE = 'kv', IDB_KEY = 'latest';
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    if(!('indexedDB' in window)) return rej(new Error('IndexedDB not available'));
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function idbGet(){
+  try{ const d = await idbOpen(); return await new Promise((res,rej)=>{ const q=d.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(IDB_KEY); q.onsuccess=()=>res(q.result||null); q.onerror=()=>rej(q.error); }); }
+  catch(e){ console.warn('Local copy unavailable', e); return null; }
+}
+async function idbSet(val){
+  try{ const d = await idbOpen(); await new Promise((res,rej)=>{ const tx=d.transaction(IDB_STORE,'readwrite'); tx.objectStore(IDB_STORE).put(val, IDB_KEY); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); return true; }
+  catch(e){ console.warn('Could not save local copy', e); return false; }
+}
+function withTimeout(promise, ms, what){
+  return Promise.race([promise, new Promise((_,rej)=>setTimeout(()=>rej(new Error(what+' timed out after '+Math.round(ms/1000)+'s')), ms))]);
+}
+function explainFsError(err){
+  const code = (err && err.code) || '';
+  if(/Firebase not loaded/.test(err && err.message || '')) return 'Firebase scripts could not be loaded on this page (gstatic.com blocked or offline).';
+  if(code==='permission-denied') return 'Firestore refused access (permission-denied). Check that the Firestore rules still allow read & write on the "dashboardData" collection (Firebase Console → Firestore → Rules), then click Retry publish.';
+  if(code==='unavailable' || /timed out|offline|network/i.test(err && err.message || '')) return 'Could not reach Firestore (network / offline). Check the connection, then click Retry publish.';
+  if(code==='resource-exhausted') return 'Firestore quota exceeded for today. Try again later.';
+  return 'Firestore error: '+((err && (err.code||err.message)) || err)+'.';
+}
+function setSync(kind, html, showRetry){
+  const b = document.getElementById('syncBanner');
+  if(!kind){ b.style.display='none'; return; }
+  b.className = 'sync-banner '+kind; b.style.display='flex';
+  document.getElementById('syncMsg').innerHTML = html;
+  document.getElementById('retryPublishBtn').style.display = showRetry ? '' : 'none';
+}
+let localMeta = null;
+// Machine-readable publish state for an unattended sync tool:
+//   <body data-publish-state="reading|publishing|published|failed" data-publish-detail="…">
+function setPublishState(state, detail){ document.body.dataset.publishState = state; document.body.dataset.publishDetail = detail || ''; }
+const PUBLISHED_BY = (new URLSearchParams(location.search).get('by') || '').slice(0, 80);
+
+async function publish(fileNames){
+  if(!DASH_COL){
+    setPublishState('failed', 'Firebase scripts could not be loaded');
+    setSync('warn', 'Saved in this browser only — Firebase could not be loaded on this page, so others can\'t see this update yet.<small>Check that gstatic.com isn\'t blocked, then click Retry publish.</small>', true);
+    return false;
+  }
+  setSync('busy', 'Publishing to Firestore… keep this tab open.', false);
+  setPublishState('publishing');
+  try{
+    const writes=[], chunkCounts={};
+    RAW_KEYS.forEach(k=>{
+      const parts = splitChunks(JSON.stringify(packRows(RAW[k]||[])));
+      chunkCounts[k]=parts.length;
+      parts.forEach((p,i)=>writes.push({id:`${DOC_PREFIX}chunk_${k}_${i}`, data:p}));
+    });
+    let group=[], bytes=0; const groups=[];
+    writes.forEach(w=>{ const b=u8len(w.data)+200; if(group.length && bytes+b>BATCH_MAX){groups.push(group);group=[];bytes=0;} group.push(w); bytes+=b; });
+    if(group.length) groups.push(group);
+    for(const gr of groups){ const batch=db.batch(); gr.forEach(w=>batch.set(DASH_COL.doc(w.id),{data:w.data})); await withTimeout(batch.commit(), 120000, 'Saving data'); }
+    const generatedAt = (localMeta && localMeta.savedAt) || new Date().toISOString();
+    // meta is written LAST, so readers never see a half-written upload
+    const meta = {generatedAt, sourceFiles:fileNames, chunkCounts, packed:true};
+    if(PUBLISHED_BY) meta.publishedBy = PUBLISHED_BY;
+    await withTimeout(DASH_COL.doc(DOC_PREFIX+'meta').set(meta), 30000, 'Saving summary');
+    lastPublished = {at:generatedAt, files:fileNames, by:PUBLISHED_BY}; updateLastUpdated();
+    localMeta = {savedAt:generatedAt, files:fileNames, published:true};
+    await idbSet({raw:RAW, ...localMeta});
+    setSync('ok', 'Published — everyone with the link now sees this data.', false);
+    setPublishState('published', generatedAt);
+    setTimeout(()=>{ if(document.getElementById('syncBanner').classList.contains('ok')) setSync(null); }, 8000);
+    return true;
+  }catch(err){
+    console.error('Publish failed', err);
+    setPublishState('failed', explainFsError(err));
+    setSync('warn', 'Saved in this browser, but NOT published — others still see the previous data.<small>'+esc(explainFsError(err))+'</small>', true);
+    return false;
+  }
+}
+async function loadPublished(){
+  if(!DASH_COL) return {status:'error', error:new Error('Firebase not loaded')};
+  try{
+    const meta = await withTimeout(DASH_COL.doc(DOC_PREFIX+'meta').get({source:'server'}), 20000, 'Loading');
+    if(!meta.exists) return {status:'empty'};
+    const m = meta.data(), cc = m.chunkCounts||{}, reads=[];
+    RAW_KEYS.forEach(k=>{ for(let i=0;i<(cc[k]||0);i++) reads.push({k,i,ref:DASH_COL.doc(`${DOC_PREFIX}chunk_${k}_${i}`)}); });
+    const snaps = await withTimeout(Promise.all(reads.map(r=>r.ref.get({source:'server'}))), 90000, 'Loading data');
+    const parts={};
+    for(let j=0;j<reads.length;j++){
+      if(!snaps[j].exists) return {status:'error', error:new Error('Published data is incomplete (missing '+reads[j].ref.id+') — re-upload and publish again')};
+      (parts[reads[j].k] = parts[reads[j].k]||[])[reads[j].i] = snaps[j].data().data;
+    }
+    const raw={}; RAW_KEYS.forEach(k=> raw[k] = parts[k] ? unpackRows(JSON.parse(parts[k].join(''))) : []);
+    return {status:'ok', raw, meta:{at:m.generatedAt, files:m.sourceFiles||[], by:m.publishedBy||''}};
+  }catch(err){ console.error('Load failed', err); return {status:'error', error:err}; }
+}
+function updateLastUpdated(){
+  const el = document.getElementById('lastUpdatedBadge');
+  if(!lastPublished){ el.style.display='none'; return; }
+  el.style.display='flex';
+  const at = new Date(lastPublished.at).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'});
+  const fl = (lastPublished.files||[]).filter(Boolean); const f = fl.length ? ` <span class="muted-part">&middot; ${fl.map(esc).join(', ')}</span>` : '';
+  const by = lastPublished.by ? ` <span class="muted-part">&middot; ${esc(lastPublished.by)}</span>` : '';
+  el.innerHTML = `<span class="dot"></span>Data as of ${at}${f}${by}`;
+}
+function rawLabel(){
+  const lines = RAW.lines.filter(l=>!isExcluded(l.company, l.project)), fin = RAW.fin.filter(f=>!isExcluded(f.company, f.project));
+  const certs = new Set(lines.filter(l=>l.type==='INV').map(l=>l.certNo)).size, advs = new Set(lines.filter(l=>l.type==='ADV').map(l=>l.certNo)).size;
+  return `${certs.toLocaleString('en-IN')} supplier certificates + ${advs.toLocaleString('en-IN')} advances (${lines.length.toLocaleString('en-IN')} PO lines)` + (fin.length ? `, ${fin.length.toLocaleString('en-IN')} Finance outstanding rows` : '') + ' · office purchases excluded';
+}
+function buildUnified(){ U = buildUnifiedFrom(RAW); }
+function renderRecon(){
+  const el = document.getElementById('reconBadge');
+  if(!U.inv.length){ el.style.display='none'; return; }
+  const dashOs = U.inv.reduce((a,r)=>a+r.osProcessed,0);
+  el.style.display='flex';
+  if(!RAW.fin.length){
+    el.className='recon info';
+    el.innerHTML = `Outstanding ${fmtINRCr(dashOs)} is taken from the All Purchase Payments report. <small>&nbsp;Upload the Finance "Supplier Outstanding Report With Ageing" to cross-check it and add MSME numbers.</small>`;
+    return;
+  }
+  const diff = dashOs - U.finTotal;
+  // Finance rounds each certificate's outstanding to whole rupees, so compare certificate by certificate within ₹1.
+  const ours = {}; U.inv.forEach(r=>{ if(r.processed) ours[r.certNo] = (ours[r.certNo]||0) + r.osProcessed; });
+  const finM = {}; RAW.fin.filter(f=>!isExcluded(f.company, f.project)).forEach(f=>{ finM[f.certId] = (finM[f.certId]||0) + f.outstanding; });
+  const ids = new Set([...Object.keys(ours).filter(k=>Math.abs(ours[k])>=0.005), ...Object.keys(finM).filter(k=>Math.abs(finM[k])>=0.005)]);
+  const bad = [...ids].filter(k=>Math.abs((ours[k]||0)-(finM[k]||0))>1);
+  if(!bad.length){
+    el.className='recon ok';
+    el.innerHTML = `&#10003; Outstanding ties to the Finance Supplier Outstanding report, certificate by certificate — ${fmtINRCr(U.finTotal)} across ${fmtNum(U.finCount)} certificates.` + (Math.abs(diff)>=1 ? ` <small>&nbsp;(₹${fmtNum(Math.abs(diff))} difference is Finance rounding each certificate to whole rupees.)</small>` : '');
+  } else {
+    const badAmt = bad.reduce((a,k)=>a+Math.abs((ours[k]||0)-(finM[k]||0)),0);
+    el.className='recon warn';
+    el.innerHTML = `&#9888; ${fmtNum(bad.length)} certificates differ from the Finance Supplier Outstanding report (${fmtINRCr(badAmt)}; dashboard ${fmtINRCr(dashOs)} vs Finance ${fmtINRCr(U.finTotal)}). <small>&nbsp;Usually the two reports were exported at different times — export both together and upload again.</small>`;
+  }
+}
+function showDashboard(label){
+  document.getElementById('uploadCard').style.display='none';
+  document.getElementById('loadedBar').style.display='flex';
+  document.getElementById('loadedNames').textContent = label;
+  document.getElementById('dashboard').style.display='block';
+  buildUnified(); renderRecon(); resetFilters(); buildFilterOptions(); render();
+}
+(async function init(){
+  document.getElementById('dashboardLoading').style.display='flex';
+  const [remote, local] = await Promise.all([loadPublished(), idbGet()]);
+  document.getElementById('dashboardLoading').style.display='none';
+  const norm = r => { const o={}; RAW_KEYS.forEach(k=>o[k]=(r&&r[k])||[]); return o; };
+  const remoteAt = remote.status==='ok' ? new Date(remote.meta.at).getTime() : 0;
+  const localAt = local ? new Date(local.savedAt).getTime() : 0;
+  if(remote.status==='ok' && remoteAt >= localAt){
+    RAW = norm(remote.raw); lastPublished = remote.meta;
+    localMeta = {savedAt:remote.meta.at, files:remote.meta.files, published:true};
+    idbSet({raw:RAW, ...localMeta});
+    updateLastUpdated();
+    showDashboard('Showing published dashboard — '+rawLabel());
+    return;
+  }
+  if(local && local.raw){
+    RAW = norm(local.raw); localMeta = {savedAt:local.savedAt, files:local.files||[], published:!!local.published};
+    lastPublished = {at:local.savedAt, files:local.files||[]}; updateLastUpdated();
+    showDashboard('Showing data saved in this browser — '+rawLabel());
+    if(!local.published)
+      setSync('warn', 'This upload is saved in this browser but has NOT been published — others still see the previous data.'+(remote.status==='error'?'<small>'+esc(explainFsError(remote.error))+'</small>':''), true);
+    else if(remote.status==='error')
+      setSync('warn', 'Showing this browser\'s saved copy — the live data couldn\'t be loaded just now.<small>'+esc(explainFsError(remote.error))+'</small>', false);
+    return;
+  }
+  if(remote.status==='error')
+    setSync('warn', 'Could not load the published dashboard.<small>'+esc(explainFsError(remote.error))+'</small>', false);
+})();
+document.getElementById('retryPublishBtn').addEventListener('click', async ()=>{
+  const b = document.getElementById('retryPublishBtn'); b.disabled = true;
+  await publish((localMeta && localMeta.files) || []);
+  b.disabled = false;
+});
+
+/* ============ UPLOAD ============ */
+let file1 = null, file2 = null;
+['1','2'].forEach(n=>{
+  document.getElementById('file'+n).addEventListener('change', e=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    if(n==='1') file1 = f; else file2 = f;
+    document.getElementById('fname'+n).textContent = f.name; document.getElementById('drop'+n).classList.add('filled');
+    document.getElementById('genBtn').disabled = false;
+  });
+});
+function readWB(file){
+  return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>{ try{ res(XLSX.read(new Uint8Array(e.target.result),{type:'array'})); }catch(x){rej(x);} }; r.onerror=rej; r.readAsArrayBuffer(file); });
+}
+document.getElementById('genBtn').addEventListener('click', async ()=>{
+  const errEl = document.getElementById('errMsg'); errEl.style.display='none';
+  const btn = document.getElementById('genBtn');
+  setPublishState('reading');
+  let next;
+  try{
+    next = { ...RAW };
+    if(file1){
+      const lines = parsePayments(await readWB(file1));
+      if(!lines.length) throw new Error('No certificate rows were recognised in Report 1');
+      next.lines = lines;
+    }
+    if(file2){
+      const fin = parseFinanceOutstanding(await readWB(file2));
+      next.fin = fin;
+    }
+    if(!next.lines.length) throw new Error('Report 1 (All Purchase Payments Report) is required the first time');
+  }catch(err){
+    console.error(err);
+    errEl.textContent = 'Could not read the file(s): '+err.message+'. Report 1 should be the PUR "All Purchase Payments Report" export and Report 2 the FINANCE "Supplier Outstanding Report With Ageing" export from IN4 ERP.';
+    errEl.style.display='block';
+    setPublishState('failed', 'Could not read the file(s): '+err.message);
+    return;
+  }
+  RAW = next;
+  const prevFiles = (localMeta && localMeta.files) || (lastPublished && lastPublished.files) || [];
+  const files = [file1 ? file1.name : prevFiles[0], file2 ? file2.name : prevFiles[1]].map(f=>f||'');
+  const savedAt = new Date().toISOString();
+  localMeta = {savedAt, files, published:false};
+  await idbSet({raw:RAW, ...localMeta});
+  lastPublished = {at:savedAt, files}; updateLastUpdated();
+  showDashboard('Loaded '+rawLabel());
+  document.getElementById('genNote').textContent = 'Generated '+new Date(savedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})+' from the uploaded reports.';
+  file1 = file2 = null;
+  ['1','2'].forEach(n=>{ document.getElementById('file'+n).value=''; document.getElementById('fname'+n).textContent='Click to choose file (.xlsx)'; document.getElementById('drop'+n).classList.remove('filled'); });
+  btn.disabled = true;
+  await publish(files);
+});
+document.getElementById('changeBtn').addEventListener('click', ()=>{
+  document.getElementById('uploadCard').style.display='block';
+  document.getElementById('loadedBar').style.display='none';
+  document.getElementById('uploadCard').scrollIntoView({behavior:'smooth', block:'start'});
+});
+document.getElementById('printBtn').addEventListener('click', ()=>window.print());
+
+/* ============ MATERIAL VIEW ============ */
+let civilMode = 'supplier';
+const MAT = r => civilMode==='supplier' ? r.matInf : r.matErp;
+const CAT = r => civilMode==='supplier' ? r.catInf : r.catErp;
+const MATS = r => civilMode==='supplier' ? r.matsInf : r.matsErp;
+document.getElementById('fCivilMode').addEventListener('change', e=>{ civilMode = e.target.value; filterState.material=[]; filterState.category=[]; buildFilterOptions(); deferRender(); });
+
+/* ============ FILTERS ============
+   Period filters (FY / Month / Date) go by INVOICE DATE (supplier advances: certificate date).
+   Material filter keeps a combined PO line ("Electrical + Plumbing") if it contains any selected material. */
+const FILTERS = [
+  {key:'company',  wrap:'fCompanyWrap',  all:'All Companies',      get:r=>r.company},
+  {key:'project',  wrap:'fProjectWrap',  all:'All Projects',       get:r=>r.project, search:true},
+  {key:'category', wrap:'fCategoryWrap', all:'All Categories',     get:r=>CAT(r)},
+  {key:'material', wrap:'fMaterialWrap', all:'All Materials',      getMany:r=>MATS(r), search:true},
+  {key:'supplier', wrap:'fSupplierWrap', all:'All Suppliers',      get:r=>r.supplier, search:true},
+  {key:'status',   wrap:'fStatusWrap',   all:'All Statuses',       get:r=>r.status},
+  {key:'fy',       wrap:'fFYWrap',       all:'All Financial Years'},
+  {key:'month',    wrap:'fMonthWrap',    all:'All Months'},
+];
+let filterState = {}; const filterOptions = {};
+function resetFilters(){
+  FILTERS.forEach(f=>filterState[f.key]=[]);
+  filterState.dateFrom = ''; filterState.dateTo = '';
+  ['fDateFrom','fDateTo'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+}
+resetFilters();
+function msRender(f){
+  const wrap = document.getElementById(f.wrap), panel = wrap.querySelector('.multiselect-panel');
+  const opts = filterOptions[f.key]||[], sel = filterState[f.key];
+  const q = (panel.querySelector('.ms-search')||{}).value || '';
+  const list = opts.length ? opts.map(o=>`<label class="ms-option" data-l="${escAttr(o.label.toLowerCase())}"><input type="checkbox" value="${escAttr(o.value)}" ${sel.includes(o.value)?'checked':''}><span>${esc(o.label)}</span></label>`).join('') : '<div class="ms-empty">No options available</div>';
+  panel.innerHTML = (f.search && opts.length>8 ? `<input type="text" class="ms-search" placeholder="Search…" value="${escAttr(q)}">` : '') + `<div class="ms-list">${list}</div>`;
+  msLabel(f);
+}
+function msLabel(f){
+  const btn = document.getElementById(f.wrap).querySelector('.multiselect-btn'), sel = filterState[f.key], opts = filterOptions[f.key]||[];
+  if(!sel.length) btn.textContent = f.all;
+  else if(sel.length===1){ const o = opts.find(x=>x.value===sel[0]); btn.textContent = o?o.label:sel[0]; }
+  else btn.textContent = sel.length+' selected';
+}
+function esc(s){ return (''+(s??'')).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+const escAttr = esc;
+function uniqSorted(arr){ return [...new Set(arr)].sort((a,b)=>(''+a).localeCompare(''+b)); }
+function allRows(){ return U.inv.concat(U.adv); }
+function buildFilterOptions(){
+  const R = allRows();
+  const opt = v=>({value:v,label:v});
+  filterOptions.company = uniqSorted(R.map(r=>r.company)).map(opt);
+  filterOptions.project = uniqSorted(R.map(r=>r.project)).map(opt);
+  filterOptions.category = uniqSorted(R.map(CAT)).map(opt);
+  filterOptions.material = uniqSorted(R.flatMap(MATS)).map(opt);
+  filterOptions.supplier = uniqSorted(R.map(r=>r.supplier)).map(opt);
+  filterOptions.status = uniqSorted(R.map(r=>r.status)).sort((a,b)=>{ const ia=STATUS_ORDER.indexOf(a), ib=STATUS_ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); }).map(opt);
+  ['category','material'].forEach(k=>filterState[k]=filterState[k].filter(v=>filterOptions[k].some(o=>o.value===v)));
+  const fy = new Map(); R.forEach(r=>{ const f=fyOf(r.date); if(f) fy.set(f.label,f.sortKey); });
+  filterOptions.fy = [...fy.entries()].sort((a,b)=>a[1]-b[1]).map(([l])=>({value:l,label:l}));
+  buildMonthOptions();
+  FILTERS.forEach(f=>{ wireMs(f); msRender(f); });
+  const ds = R.map(r=>r.date).filter(Boolean).sort();
+  const from = document.getElementById('fDateFrom'), to = document.getElementById('fDateTo');
+  if(ds.length){ from.min = to.min = ds[0]; from.max = to.max = ds[ds.length-1]; }
+  if(!from.dataset.wired){
+    from.dataset.wired = '1';
+    const onDate = () => {
+      let a = from.value || '', b = to.value || '';
+      if(a && b && a > b){ [a, b] = [b, a]; from.value = a; to.value = b; }
+      filterState.dateFrom = a; filterState.dateTo = b;
+      deferRender();
+    };
+    from.addEventListener('change', onDate); to.addEventListener('change', onDate);
+    document.getElementById('fDateClear').addEventListener('click', ()=>{ from.value=''; to.value=''; onDate(); });
+  }
+}
+function buildMonthOptions(){
+  const mm = new Map();
+  allRows().forEach(r=>{ const m=monthOf(r.date); if(!m) return; if(filterState.fy.length && (!m.fy || !filterState.fy.includes(m.fy.label))) return; mm.set(m.key,m.label); });
+  filterOptions.month = [...mm.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([k,l])=>({value:k,label:l}));
+  filterState.month = filterState.month.filter(v=>filterOptions.month.some(o=>o.value===v));
+}
+function wireMs(f){
+  const wrap = document.getElementById(f.wrap);
+  if(wrap.dataset.wired) return; wrap.dataset.wired='1';
+  const btn = wrap.querySelector('.multiselect-btn'), panel = wrap.querySelector('.multiselect-panel');
+  btn.addEventListener('click', e=>{ e.stopPropagation(); const open = wrap.classList.contains('open'); document.querySelectorAll('.multiselect.open').forEach(w=>w.classList.remove('open')); if(!open){ wrap.classList.add('open'); const s=panel.querySelector('.ms-search'); if(s) s.focus(); } });
+  panel.addEventListener('click', e=>e.stopPropagation());
+  panel.addEventListener('input', e=>{
+    if(!e.target.classList.contains('ms-search')) return;
+    const q = e.target.value.trim().toLowerCase();
+    panel.querySelectorAll('.ms-option').forEach(o=>o.style.display = !q || o.dataset.l.includes(q) ? '' : 'none');
+  });
+  panel.addEventListener('change', e=>{
+    if(e.target.type!=='checkbox') return;
+    const v = e.target.value, sel = filterState[f.key];
+    if(e.target.checked){ if(!sel.includes(v)) sel.push(v); } else filterState[f.key] = sel.filter(x=>x!==v);
+    msLabel(f);
+    if(f.key==='fy'){ filterState.month=[]; buildMonthOptions(); msRender(FILTERS.find(x=>x.key==='month')); }
+    deferRender();
+  });
+}
+document.addEventListener('click', ()=>document.querySelectorAll('.multiselect.open').forEach(w=>w.classList.remove('open')));
+document.getElementById('filterClear').addEventListener('click', ()=>{ resetFilters(); buildMonthOptions(); FILTERS.forEach(msRender); deferRender(); });
+function deferRender(){
+  const b = document.getElementById('filterBusy'); b.style.display='inline-flex';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ try{ render(); } finally { b.style.display='none'; } }));
+}
+function matchDims(r){
+  return FILTERS.every(f=>{
+    const sel = filterState[f.key];
+    if(!sel.length) return true;
+    if(f.getMany) return f.getMany(r).some(v=>sel.includes(v));
+    if(!f.get) return true;
+    return sel.includes(f.get(r));
+  });
+}
+const dateRangeActive = () => !!(filterState.dateFrom || filterState.dateTo);
+function inDateRange(iso){
+  if(!dateRangeActive()) return true;
+  if(!iso) return false;
+  if(filterState.dateFrom && iso < filterState.dateFrom) return false;
+  if(filterState.dateTo && iso > filterState.dateTo) return false;
+  return true;
+}
+function matchPeriodIso(iso){
+  if(!inDateRange(iso)) return false;
+  const fy = filterState.fy, mo = filterState.month;
+  if(!fy.length && !mo.length) return true;
+  if(mo.length){ const m = monthOf(iso); return !!m && mo.includes(m.key); }
+  const f = fyOf(iso); return !!f && fy.includes(f.label);
+}
+const periodActive = () => filterState.fy.length>0 || filterState.month.length>0 || dateRangeActive();
+function dayMode(){
+  if(!filterState.dateFrom || !filterState.dateTo) return false;
+  return (new Date(filterState.dateTo) - new Date(filterState.dateFrom)) / 86400000 <= 62;
+}
+function periodBucket(iso){
+  const d = parseDateAny(iso); if(!d) return null;
+  if(dayMode()) return {label:d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'}), s:toISO(d)};
+  if(periodActive()){ const m = monthOf(iso); return {label:m.label, s:m.key}; }
+  const f = fyOf(iso); return {label:f.label, s:String(f.sortKey)};
+}
+const bySort = g => (a,b) => g[a].s < g[b].s ? -1 : g[a].s > g[b].s ? 1 : 0;
+
+/* ============ FORMATTING ============ */
+function fmtINRCr(n){
+  if(n===null||n===undefined||isNaN(n)) return '—';
+  if(Math.abs(n)<1) return '₹0';
+  const a = Math.abs(n);
+  if(a>=1e7) return '₹'+(n/1e7).toLocaleString('en-IN',{maximumFractionDigits:2})+' Cr';
+  if(a>=1e5) return '₹'+(n/1e5).toLocaleString('en-IN',{maximumFractionDigits:2})+' L';
+  return '₹'+Math.round(n).toLocaleString('en-IN');
+}
+function fmtNum(n){ return (n===null||n===undefined||isNaN(n)) ? '—' : Math.round(n).toLocaleString('en-IN'); }
+function fmtPct(n){ return (n===null||n===undefined||!isFinite(n)) ? '—' : n.toLocaleString('en-IN',{maximumFractionDigits:1})+'%'; }
+function fmtDate(iso){ const d = parseDateAny(iso); return d ? d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '—'; }
+const sum = (rows, k) => rows.reduce((a,r)=>a+(r[k]||0),0);
+const L = v => v/1e5;
+const pct = (a,b) => b ? a/b*100 : 0;
+
+/* ============ DERIVED STATE ============ */
+let INV = [], ADVR = [];
+const drill = {};
+const TODAY = (()=>{ const t=new Date(); return toISO(new Date(t.getFullYear(),t.getMonth(),t.getDate())); })();
+const AGE_BUCKETS = [['0–30 days',0,30],['31–60 days',31,60],['61–90 days',61,90],['91–180 days',91,180],['180+ days',181,1e9]];
+function ageDays(iso){ const d = parseDateAny(iso); return d ? Math.round((parseDateAny(TODAY) - d)/86400000) : null; }
+function ageBucket(r){ const a = ageDays(r.processed); if(a===null) return 'No processed date'; return AGE_BUCKETS.find(b=>a>=b[1] && a<=b[2])[0]; }
+function withAge(r){ return {...r, ageDays: ageDays(r.processed), overdueDays: r.due && r.due < TODAY ? ageDays(r.due) : 0, material:MAT(r), category:CAT(r)}; }
+function groupBy(rows, keyFn, fields){
+  const m = {};
+  rows.forEach(r=>{ const k = keyFn(r); if(!m[k]){ m[k]={key:k, count:0, certs:new Set()}; fields.forEach(f=>m[k][f]=0); } m[k].count++; m[k].certs.add(r.certRef); fields.forEach(f=>m[k][f]+= (r[f]||0)); });
+  return Object.values(m).map(g=>({...g, certCount:g.certs.size}));
+}
+const certCount = rows => new Set(rows.map(r=>r.certRef)).size;
+function supplierSummary(invRows, advRows){
+  const m = {};
+  const get = r => m[r.supplierKey] = m[r.supplierKey] || {supplier:r.supplier, gstin:r.gstin, msme:r.msme, alias:r.supplierAlias, certs:new Set(), pos:new Set(), materials:new Set(), certified:0, paid:0, cashPaid:0, osProcessed:0, osPending:0, overdue:0, os90:0, advGiven:0, advRecovered:0, advUnpaid:0};
+  invRows.forEach(r=>{ const v=get(r); v.certs.add(r.certRef); v.pos.add(r.company+'|'+r.po); v.materials.add(MAT(r)); v.certified+=r.certified; v.paid+=r.paid; v.cashPaid+=r.cashPaid; v.osProcessed+=r.osProcessed; v.osPending+=r.osPending; v.advRecovered+=r.advAdjusted;
+    if(r.osProcessed>0.5 && r.due && r.due<TODAY) v.overdue+=r.osProcessed; const a=ageDays(r.processed); if(r.osProcessed>0.5 && a!==null && a>90) v.os90+=r.osProcessed; });
+  advRows.forEach(r=>{ const v=get(r); v.advGiven+=r.given; v.advUnpaid+=r.unpaid; v.cashPaid+=r.cashPaid; });
+  return Object.values(m).map(v=>({...v, certCount:v.certs.size, poCount:v.pos.size, materials:[...v.materials].sort().join(', '), yetToPay:v.osProcessed+v.osPending+v.advUnpaid, advPending:v.advGiven-v.advRecovered, msmeFlag:v.msme?'Yes':''}))
+    .sort((a,b)=>b.certified-a.certified);
+}
+function materialSummary(invRows, keyFn){
+  return groupBy(invRows, keyFn, ['certified','paid','osProcessed','osPending','cashPaid']).map(g=>({...g, outstanding:g.osProcessed, yetToPay:g.osProcessed+g.osPending})).sort((a,b)=>b.certified-a.certified);
+}
+function render(){
+  INV = U.inv.filter(r=>matchDims(r) && matchPeriodIso(r.date));
+  ADVR = U.adv.filter(r=>matchDims(r) && matchPeriodIso(r.date));
+  renderFilterSummary();
+  renderHero();
+  renderKPIs();
+  renderCharts();
+  requestAnimationFrame(()=>Object.values(charts).forEach(c=>c && c.resize && c.resize()));
+}
+function renderFilterSummary(){
+  const chips = [];
+  ['company','project','category','material','supplier','status'].forEach(k=>filterState[k].forEach(v=>chips.push(v)));
+  if(filterState.month.length) filterState.month.forEach(v=>{ const o=filterOptions.month.find(x=>x.value===v); chips.push(o?o.label:v); });
+  else filterState.fy.forEach(v=>chips.push(v));
+  if(dateRangeActive()) chips.push((filterState.dateFrom ? fmtDate(filterState.dateFrom) : 'Start') + ' → ' + (filterState.dateTo ? fmtDate(filterState.dateTo) : 'Today'));
+  const el = document.getElementById('filterSummary');
+  if(!chips.length){ el.style.display='none'; return; }
+  el.style.display='flex';
+  el.innerHTML = chips.map(c=>`<span class="filter-chip">${esc(c)}</span>`).join('') + `<span class="filter-note">Financial Year, Month and Date go by invoice date. Outstanding ageing always counts from the Finance processed date to today.${filterState.material.length?' A combined PO line is kept when it contains a selected material.':''}</span>`;
+}
+function openRows(title, rows, cols){ openDrill(title, `${fmtNum(certCount(rows))} certificates &middot; ${fmtINRCr(sum(rows,'certified'))} purchase value &middot; ${fmtINRCr(sum(rows,'osProcessed'))} outstanding`, cols||'line', rows.map(withAge)); }
+function renderHero(){
+  const c = sum(INV,'certified'), p = sum(INV,'paid'), o = sum(INV,'osProcessed'), q = sum(INV,'osPending'), ret = sum(INV,'retention');
+  const card = (cls,lbl,v,sub,key) => `<div class="hero-half ${cls}" data-hero="${key}"><div class="lbl">${lbl}</div><div class="big num">${fmtINRCr(v)}</div><div class="sub2">${sub}</div><div class="hero-bar"><div class="fill" style="width:${Math.max(0,Math.min(100,pct(v,c)))}%"></div></div></div>`;
+  document.getElementById('heroSplit').innerHTML =
+    card('cert','Purchase Value (Certified)',c,`${fmtNum(certCount(INV))} supplier certificates &middot; ${fmtNum(new Set(INV.map(r=>r.company+'|'+r.po)).size)} POs`,'cert') +
+    card('paid','Total Paid',p,`${fmtPct(pct(p,c))} of purchase value settled`+(ret>=1000?` &middot; ${fmtINRCr(ret)} retention held`:''),'paid') +
+    card('out','Total Outstanding',o,`${fmtPct(pct(o,c))} &middot; processed by Finance, not yet paid`,'out') +
+    card('pend','In Approval (Yet to Process)',q,`${fmtPct(pct(q,c))} &middot; Submitted / Approved, not yet processed`,'pend');
+}
+document.getElementById('heroSplit').addEventListener('click', e=>{
+  const h = e.target.closest('.hero-half'); if(!h) return;
+  const k = h.dataset.hero;
+  if(k==='cert') openRows('Purchase value', INV);
+  if(k==='paid') openRows('Paid (settled)', INV.filter(r=>r.paid>0.5));
+  if(k==='out') openRows('Outstanding — processed, unpaid', INV.filter(r=>r.osProcessed>0.5).sort((a,b)=>(ageDays(a.processed)??-1)<(ageDays(b.processed)??-1)?1:-1), 'lineOut');
+  if(k==='pend') openRows('In approval — not yet processed', INV.filter(r=>r.osPending>0.5), 'lineOut');
+});
+function renderKPIs(){
+  const certified = sum(INV,'certified'), paid = sum(INV,'paid'), cash = sum(INV,'cashPaid'), advAdj = sum(INV,'advAdjusted'), otherSet = sum(INV,'otherSettled'), dn = sum(INV,'debitNote');
+  const osRows = INV.filter(r=>r.osProcessed>0.5), pendRows = INV.filter(r=>r.osPending>0.5);
+  const os = sum(INV,'osProcessed'), pend = sum(INV,'osPending');
+  const advUnpaidRows = ADVR.filter(r=>r.unpaid>0.5), advUnpaid = sum(ADVR,'unpaid');
+  const yet = os + pend + advUnpaid;
+  const overdueRows = osRows.filter(r=>r.due && r.due<TODAY), overdue = sum(overdueRows,'osProcessed');
+  const o90 = osRows.filter(r=>(ageDays(r.processed)??0)>90), o180 = osRows.filter(r=>(ageDays(r.processed)??0)>180);
+  const sup = supplierSummary(INV, ADVR), supInv = sup.filter(s=>s.certCount), topSup = supInv[0];
+  const supOs = [...sup].filter(s=>s.osProcessed>0.5).sort((a,b)=>b.osProcessed-a.osProcessed);
+  const msmeRows = osRows.filter(r=>r.msme), msmeOs = sum(msmeRows,'osProcessed');
+  const advGiven = sum(ADVR,'given'), advCash = sum(ADVR,'cashPaid'), advPendingRows = sup.filter(s=>Math.abs(s.advPending)>0.5).sort((a,b)=>b.advPending-a.advPending);
+  const advPending = advGiven - advAdj;
+  const pos = new Set(INV.map(r=>r.company+'|'+r.po)).size, nCert = certCount(INV);
+  const paidCerts = new Set(INV.filter(r=>r.status==='Paid').map(r=>r.certRef)).size;
+  const cats = materialSummary(INV, CAT), topCat = cats[0];
+  const mats = materialSummary(INV, MAT);
+  const civilShare = certified ? sum(INV.filter(r=>r.matErp==='Civil (general)' && r.matInf!==r.matErp),'certified') : 0;
+  Object.assign(drill, {
+    cert:{cols:'line', rows:INV}, certs:{cols:'line', rows:INV}, pos:{cols:'po', rows:poSummary(INV)},
+    suppliers:{cols:'supplier', rows:supInv}, avg:{cols:'line', rows:INV},
+    paid:{cols:'line', rows:INV.filter(r=>r.paid>0.5)}, cash:{cols:'line', rows:INV.filter(r=>r.cashPaid>0.5).concat(ADVR.filter(r=>r.cashPaid>0.5))},
+    os:{cols:'lineOut', rows:osRows}, pend:{cols:'lineOut', rows:pendRows}, yet:{cols:'lineOut', rows:osRows.concat(pendRows, advUnpaidRows)},
+    overdue:{cols:'lineOut', rows:overdueRows.sort((a,b)=>a.due<b.due?-1:1)}, o90:{cols:'lineOut', rows:o90}, o180:{cols:'lineOut', rows:o180},
+    msme:{cols:'lineOut', rows:msmeRows}, supOs:{cols:'supplier', rows:supOs},
+    cats:{cols:'material', rows:cats}, mats:{cols:'material', rows:mats},
+    base:{cols:'line', rows:INV}, gst:{cols:'line', rows:INV}, tds:{cols:'line', rows:INV.filter(r=>r.tds).concat(ADVR.filter(r=>r.advTds>0.5))},
+    adv:{cols:'adv', rows:ADVR}, advPend:{cols:'supplier', rows:advPendingRows}, advUnpaid:{cols:'adv', rows:advUnpaidRows},
+  });
+  const tile = (lbl,key,val,sub,alert) => `<div class="kpi${alert?' alert':''}" data-drill="${key}"><div class="lbl">${lbl}</div><div class="val num">${val}</div><div class="sub">${sub}</div></div>`;
+  const per = periodActive() ? 'selected period' : 'all-time';
+  document.getElementById('kpiGrid').innerHTML =
+    `<div class="kpi-group-label">Purchases &middot; ${per}</div>` +
+    tile('Purchase Value','cert',fmtINRCr(certified),`Incl. GST ${fmtINRCr(sum(INV,'gst'))} &middot; base value ${fmtINRCr(sum(INV,'base'))}`) +
+    tile('Supplier Certificates','certs',fmtNum(nCert),`<b>${fmtNum(paidCerts)}</b> fully paid &middot; ${fmtNum(nCert-paidCerts)} open`) +
+    tile('Purchase Orders','pos',fmtNum(pos),`Avg ${fmtINRCr(pos?certified/pos:0)} invoiced per PO`) +
+    tile('Suppliers','suppliers',fmtNum(supInv.length),topSup?`Largest: ${esc(topSup.supplier)} (${fmtINRCr(topSup.certified)})`:'—') +
+    tile('Top Material Category','cats',topCat?esc(topCat.key):'—',topCat?`${fmtINRCr(topCat.certified)} &middot; ${fmtPct(pct(topCat.certified,certified))} of purchase value`:'—') +
+    tile('Materials','mats',fmtNum(new Set(INV.flatMap(MATS)).size),`Across ${fmtNum(cats.length)} categories &middot; standardised names`) +
+    `<div class="kpi-group-label">Payments &amp; outstanding</div>` +
+    tile('Total Paid','paid',fmtINRCr(paid),`Cash ${fmtINRCr(cash)} + advance adjusted ${fmtINRCr(advAdj)}` + (otherSet>0.5?` + TDS/other ${fmtINRCr(otherSet)}`:'') + (dn>0.5?` + debit notes ${fmtINRCr(dn)}`:'')) +
+    tile('Cash Paid to Suppliers','cash',fmtINRCr(cash+advCash),`Invoices ${fmtINRCr(cash)} + advances ${fmtINRCr(advCash)}`) +
+    tile('Total Outstanding','os',fmtINRCr(os),`${fmtNum(certCount(osRows))} certificates processed, unpaid`, os>0.5) +
+    tile('In Approval','pend',fmtINRCr(pend),`${fmtNum(certCount(pendRows))} certificates Submitted / Approved`) +
+    tile('Total Yet to Be Paid','yet',fmtINRCr(yet),`Outstanding + in approval` + (advUnpaid>0.5?` + ${fmtINRCr(advUnpaid)} approved advances`:''), yet>0.5) +
+    tile('Overdue Outstanding','overdue',fmtINRCr(overdue),`${fmtNum(certCount(overdueRows))} certificates past due date &middot; ${fmtPct(pct(overdue,os))} of outstanding`, overdue>0.5) +
+    `<div class="kpi-group-label">Outstanding risk</div>` +
+    tile('Outstanding > 90 Days','o90',fmtINRCr(sum(o90,'osProcessed')),`${fmtNum(certCount(o90))} certificates &middot; ${fmtPct(pct(sum(o90,'osProcessed'),os))} of outstanding`, sum(o90,'osProcessed')>0.5) +
+    tile('Outstanding > 180 Days','o180',fmtINRCr(sum(o180,'osProcessed')),`${fmtNum(certCount(o180))} certificates`, sum(o180,'osProcessed')>0.5) +
+    tile('MSME Suppliers Outstanding','msme', RAW.fin.length ? fmtINRCr(msmeOs) : '—', RAW.fin.length ? `${fmtNum(new Set(msmeRows.map(r=>r.supplierKey)).size)} MSME suppliers &middot; ${fmtNum(certCount(msmeRows.filter(r=>(ageDays(r.processed)??0)>45)))} certificates > 45 days` : 'Upload the Finance outstanding report to flag MSME suppliers', RAW.fin.length && msmeOs>0.5) +
+    tile('Largest Supplier Outstanding','supOs', supOs[0] ? fmtINRCr(supOs[0].osProcessed) : '—', supOs[0] ? `${esc(supOs[0].supplier)} &middot; ${fmtNum(supOs.length)} suppliers with outstanding` : 'Nothing outstanding') +
+    `<div class="kpi-group-label">Tax &amp; advances</div>` +
+    tile('GST on Purchases','gst',fmtINRCr(sum(INV,'gst')),'Tax additions on certified invoices') +
+    tile('TDS Deducted','tds',fmtINRCr(sum(INV,'tds')+sum(ADVR,'advTds')),`Incl. ${fmtINRCr(sum(ADVR,'advTds'))} on advances`) +
+    tile('Advances Paid','adv',fmtINRCr(advGiven),`${fmtNum(ADVR.filter(r=>r.given>0.5).length)} advance certificates &middot; incl. TDS withheld`) +
+    tile('Advance Adjusted','paid',fmtINRCr(advAdj),'Recovered against supplier invoices') +
+    tile('Advance Pending Recovery','advPend',fmtINRCr(advPending),`${fmtNum(advPendingRows.filter(s=>s.advPending>0.5).length)} suppliers with unadjusted advance`, advPending>0.5) +
+    tile('Advances Approved, Unpaid','advUnpaid',fmtINRCr(advUnpaid),`${fmtNum(advUnpaidRows.length)} advance requests awaiting payment`);
+  document.getElementById('matNote').innerHTML = civilMode==='supplier' && civilShare>0.5
+    ? `${fmtINRCr(civilShare)} (${fmtPct(pct(civilShare,certified))}) of this purchase value is booked in the ERP only as the generic group "Civil" and is shown here by the supplier's material (e.g. a steel mill → TMT Steel Bars). Switch <b>"Civil" material group</b> to "Show as in ERP" to see the ERP grouping. Lines that carry several material groups on one PO keep one combined label — the ERP does not split their value.`
+    : `Showing material groups exactly as booked in the ERP. Lines that carry several material groups on one PO keep one combined label — the ERP does not split their value.`;
+}
+function poSummary(rows){
+  const m = {};
+  rows.forEach(r=>{ const k=r.company+'|'+r.po; const v = m[k] = m[k] || {po:r.po, supplier:r.supplier, project:r.project, company:r.company, materials:new Set(), certs:new Set(), first:r.date, last:r.date, certified:0, paid:0, osProcessed:0, osPending:0};
+    v.materials.add(MAT(r)); v.certs.add(r.certRef); v.certified+=r.certified; v.paid+=r.paid; v.osProcessed+=r.osProcessed; v.osPending+=r.osPending; if(r.date<v.first) v.first=r.date; if(r.date>v.last) v.last=r.date; });
+  return Object.values(m).map(v=>({...v, materials:[...v.materials].join(', '), certCount:v.certs.size})).sort((a,b)=>b.certified-a.certified);
+}
+
+/* ============ CHARTS ============ */
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function destroy(k){ if(charts[k]){ charts[k].destroy(); delete charts[k]; } }
+function emptyMsg(id, msg){
+  const c = document.getElementById(id), w = c.closest('.wrap'); c.style.display='none';
+  let m = w.querySelector('.chart-empty-msg'); if(!m){ m=document.createElement('div'); m.className='chart-empty-msg'; w.appendChild(m); } m.textContent = msg;
+}
+function clearMsg(id){ const c=document.getElementById(id), w=c.closest('.wrap'); c.style.display=''; const m=w.querySelector('.chart-empty-msg'); if(m) m.remove(); }
+const lakhTip = {callbacks:{label: ctx => (ctx.dataset.label? ctx.dataset.label+': ':'') + '₹'+(+ctx.raw).toLocaleString('en-IN',{maximumFractionDigits:2})+' L'}};
+const lakhLbl = v => v>=100 ? '₹'+(v/100).toFixed(2)+' Cr' : '₹'+v.toFixed(1)+' L';
+const trunc = s => s.length>36 ? s.slice(0,34)+'…' : s;
+function hbarStack(key, id, labels, datasets, emptyText, onClick){
+  destroy(key);
+  if(!labels.length){ emptyMsg(id, emptyText); return; }
+  clearMsg(id);
+  const totals = labels.map((_,i)=>datasets.reduce((a,d)=>a+(d.data[i]||0),0));
+  charts[key] = new Chart(document.getElementById(id), {
+    type:'bar', data:{ labels, datasets: datasets.map(d=>({...d, stack:'a', borderRadius:2})) },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:74}},
+      scales:{ x:{ stacked:true, title:{display:true,text:'₹ Lakh'}, grid:{color:'#EEF1F5'} }, y:{ stacked:true, grid:{display:false}, ticks:{font:{size:10.5}, callback(v){ return trunc(this.getLabelForValue(v)); }} } },
+      onClick: onClick ? (e,els)=>{ if(els.length) onClick(labels[els[0].index]); } : undefined,
+      onHover: onClick ? (e,els)=>{ e.native.target.style.cursor = els.length?'pointer':'default'; } : undefined,
+      plugins:{ legend:{display:datasets.length>1, position:'bottom', labels:{boxWidth:12,font:{size:11}}}, tooltip:lakhTip,
+        datalabels:{ display: ctx => ctx.datasetIndex===datasets.length-1, color: css('--navy'), anchor:'end', align:'right', clamp:true, font:{weight:'600',size:10.5}, formatter:(v,ctx)=>lakhLbl(totals[ctx.dataIndex]) } } },
+    plugins:[ChartDataLabels]
+  });
+}
+function vbar(key, id, labels, datasets, emptyText, stacked, onClick){
+  destroy(key);
+  if(!labels.length){ emptyMsg(id, emptyText); return; }
+  clearMsg(id);
+  const totals = labels.map((_,i)=>datasets.reduce((a,d)=>a+(d.data[i]||0),0));
+  charts[key] = new Chart(document.getElementById(id), {
+    type:'bar', data:{ labels, datasets: datasets.map(d=>({borderRadius:3, ...d})) },
+    options:{ responsive:true, maintainAspectRatio:false, layout:{padding:{top:24}},
+      scales:{ x:{ stacked:!!stacked, grid:{display:false}, ticks:{font:{size:10.5}} }, y:{ stacked:!!stacked, title:{display:true,text:'₹ Lakh'}, grid:{color:'#EEF1F5'} } },
+      onClick: onClick ? (e,els)=>{ if(els.length) onClick(labels[els[0].index], els[0].datasetIndex); } : undefined,
+      onHover: onClick ? (e,els)=>{ e.native.target.style.cursor = els.length?'pointer':'default'; } : undefined,
+      plugins:{ legend:{display: datasets.length>1, position:'bottom', labels:{boxWidth:12,font:{size:11}}}, tooltip:lakhTip,
+        datalabels:{ display: ctx => stacked ? ctx.datasetIndex===datasets.length-1 && labels.length<=16 : labels.length<=16, color: css('--navy'), anchor:'end', align:'top', font:{weight:'600',size:10.5}, formatter:(v,ctx)=> lakhLbl(stacked ? totals[ctx.dataIndex] : v) } } },
+    plugins:[ChartDataLabels]
+  });
+}
+function donut(key, id, labels, data, colors, emptyText, onClick){
+  destroy(key);
+  if(!labels.length || !data.some(v=>v>0)){ emptyMsg(id, emptyText); return; }
+  clearMsg(id);
+  const total = data.reduce((a,b)=>a+b,0);
+  charts[key] = new Chart(document.getElementById(id), {
+    type:'doughnut', data:{ labels, datasets:[{ data, backgroundColor: colors, borderWidth:2, borderColor:'#fff' }] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'56%',
+      onClick: onClick ? (e,els)=>{ if(els.length) onClick(labels[els[0].index]); } : undefined,
+      plugins:{ legend:{position:'right', labels:{boxWidth:12,font:{size:11}}}, tooltip:lakhTip,
+        datalabels:{ color:'#fff', font:{weight:'700',size:11}, formatter: v => (v/total>0.04) ? Math.round(v/total*100)+'%' : '' } } },
+    plugins:[ChartDataLabels]
+  });
+}
+const PALETTE = ['#262B6E','#EA7726','#5C63B8','#B85A17','#F3A468','#2E8B7A','#8A90C8','#7A5C3E','#3E7CB1','#D9A066','#6B4E9B','#C9CCE8','#E3B58A','#4D5299','#9AA0B8','#BFC3DD'];
+// Colours follow each category's rank in total (unfiltered) purchase value, so a category keeps its colour across charts and filters.
+function catColors(keys){
+  const tot = {}; U.inv.forEach(r=>{ const c=CAT(r); tot[c]=(tot[c]||0)+r.certified; });
+  const ranked = Object.keys(tot).filter(c=>c!==CAT_MULTI && c!==CAT_OTHER).sort((a,b)=>tot[b]-tot[a]);
+  const m={}; keys.forEach(k=>{ const i = ranked.indexOf(k); m[k] = k===CAT_MULTI ? '#A9AECF' : k===CAT_OTHER ? '#CCCCCC' : PALETTE[(i<0?0:i)%PALETTE.length]; }); return m;
+}
+function threeWay(rows, keyFn, top){
+  const g = materialSummary(rows, keyFn).slice(0, top||1e9);
+  return { labels:g.map(x=>x.key), ds:[
+    {label:'Paid', data:g.map(x=>L(x.paid)), backgroundColor:css('--navy')},
+    {label:'Outstanding', data:g.map(x=>L(x.osProcessed)), backgroundColor:css('--gold')},
+    {label:'In approval', data:g.map(x=>L(x.osPending)), backgroundColor:'#F3C9A6'} ] };
+}
+function renderCharts(){
+  const navy=css('--navy'), gold=css('--gold'), brick=css('--brick'), pale='#F3C9A6', muted='#A9AECF';
+  document.querySelectorAll('.pw').forEach(s=>s.textContent = dayMode() ? 'day' : periodActive() ? 'month' : 'financial year');
+  const noData = 'No purchases for the current filter.';
+  // ---- Overview ----
+  const fyG = {};
+  INV.forEach(r=>{ const f=periodBucket(r.date); if(!f) return; const g=fyG[f.label]=fyG[f.label]||{s:f.s,paid:0,os:0,pend:0,ret:0}; g.paid+=r.paid; g.os+=r.osProcessed; g.pend+=r.osPending; g.ret+=r.retention; });
+  const fyL = Object.keys(fyG).sort(bySort(fyG));
+  vbar('fy','chFY', fyL, [
+    {label:'Paid', data:fyL.map(k=>L(fyG[k].paid)), backgroundColor:navy, stack:'a'},
+    {label:'Outstanding', data:fyL.map(k=>L(fyG[k].os)), backgroundColor:gold, stack:'a'},
+    {label:'In approval', data:fyL.map(k=>L(fyG[k].pend)), backgroundColor:pale, stack:'a'},
+  ].concat(sum(INV,'retention')>=1000 ? [{label:'Retention held', data:fyL.map(k=>L(fyG[k].ret)), backgroundColor:'#A9AECF', stack:'a'}] : []), noData, true, k=>openRows('Purchases — '+k, INV.filter(r=>{ const f=periodBucket(r.date); return f && f.label===k; })));
+  const cats = materialSummary(INV, CAT);
+  const cc = catColors(cats.map(c=>c.key));
+  donut('catDonut','chCatDonut', cats.map(c=>c.key), cats.map(c=>L(c.certified)), cats.map(c=>cc[c.key]), noData, k=>openRows('Category: '+k, INV.filter(r=>CAT(r)===k)));
+  const mG = {};
+  INV.forEach(r=>{ const m=monthOf(r.date); if(!m) return; (mG[m.key]=mG[m.key]||{label:m.label,v:0}).v+=r.certified; });
+  const mK = Object.keys(mG).sort();
+  destroy('monthly');
+  if(!mK.length) emptyMsg('chMonthly', noData);
+  else { clearMsg('chMonthly');
+    charts.monthly = new Chart(document.getElementById('chMonthly'), { type:'bar',
+      data:{ labels:mK.map(k=>mG[k].label), datasets:[{ label:'Purchase value', data:mK.map(k=>L(mG[k].v)), backgroundColor:gold, borderRadius:3 }] },
+      options:{ responsive:true, maintainAspectRatio:false, scales:{ x:{grid:{display:false}, ticks:{maxRotation:60,minRotation:45,font:{size:10}}}, y:{title:{display:true,text:'₹ Lakh'}, grid:{color:'#EEF1F5'}} },
+        onClick:(e,els)=>{ if(!els.length) return; const k=mK[els[0].index]; openRows('Purchases — '+mG[k].label, INV.filter(r=>r.date && r.date.slice(0,7)===k)); },
+        plugins:{ legend:{display:false}, tooltip:lakhTip, datalabels:{display:false} } } });
+  }
+  // ---- Outstanding ----
+  const osRows = INV.filter(r=>r.osProcessed>0.5);
+  const ag = {}; osRows.forEach(r=>{ const b=ageBucket(r); ag[b]=(ag[b]||0)+r.osProcessed; });
+  const agL = AGE_BUCKETS.map(b=>b[0]).concat(['No processed date']).filter(b=>ag[b]);
+  vbar('ageing','chAgeing', agL, [{label:'Outstanding', data:agL.map(b=>L(ag[b])), backgroundColor:agL.map((b,i)=> i>=3?brick:gold)}], 'Nothing outstanding for the current filter.', false,
+    k=>openRows('Outstanding — '+k, osRows.filter(r=>ageBucket(r)===k).sort((a,b)=>(ageDays(b.processed)??0)-(ageDays(a.processed)??0)), 'lineOut'));
+  const dueOver = osRows.filter(r=>r.due && r.due<TODAY), dueNot = osRows.filter(r=>!(r.due && r.due<TODAY)), pendRows = INV.filter(r=>r.osPending>0.5);
+  const dueL = ['Overdue','Not yet due','In approval'], dueSets = [dueOver, dueNot, pendRows];
+  const dueV = [sum(dueOver,'osProcessed'), sum(dueNot,'osProcessed'), sum(pendRows,'osPending')];
+  vbar('due','chDue', dueV.some(v=>v>0.5)?dueL:[], [{label:'Amount', data:dueV.map(L), backgroundColor:[brick,gold,pale]}], 'Nothing outstanding for the current filter.', false,
+    k=>openRows(k, dueSets[dueL.indexOf(k)], 'lineOut'));
+  const supAge = {};
+  osRows.forEach(r=>{ const v = supAge[r.supplier] = supAge[r.supplier] || {t:0}; const b=ageBucket(r); v[b]=(v[b]||0)+r.osProcessed; v.t+=r.osProcessed; });
+  const supAgeTop = Object.entries(supAge).sort((a,b)=>b[1].t-a[1].t).slice(0,15);
+  const ageCols = ['#F3C9A6','#F3A468','#EA7726','#B85A17','#7A3A0E'];
+  hbarStack('supOutAge','chSupOutAge', supAgeTop.map(x=>x[0]), AGE_BUCKETS.map((b,i)=>({label:b[0], data:supAgeTop.map(x=>L(x[1][b[0]]||0)), backgroundColor:ageCols[i]})),
+    'Nothing outstanding for the current filter.', k=>openRows('Outstanding — '+k, osRows.filter(r=>r.supplier===k), 'lineOut'));
+  const catOut = groupBy(INV.filter(r=>r.osProcessed>0.5||r.osPending>0.5), CAT, ['osProcessed','osPending']).sort((a,b)=>(b.osProcessed+b.osPending)-(a.osProcessed+a.osPending));
+  hbarStack('catOut','chCatOut', catOut.map(c=>c.key), [
+    {label:'Outstanding', data:catOut.map(c=>L(c.osProcessed)), backgroundColor:gold},
+    {label:'In approval', data:catOut.map(c=>L(c.osPending)), backgroundColor:pale}],
+    'Nothing outstanding for the current filter.', k=>openRows('Outstanding — '+k, INV.filter(r=>CAT(r)===k && (r.osProcessed>0.5||r.osPending>0.5)), 'lineOut'));
+  const matOut = groupBy(INV.filter(r=>r.osProcessed>0.5||r.osPending>0.5), MAT, ['osProcessed','osPending']).sort((a,b)=>(b.osProcessed+b.osPending)-(a.osProcessed+a.osPending)).slice(0,15);
+  hbarStack('matOut','chMatOut', matOut.map(c=>c.key), [
+    {label:'Outstanding', data:matOut.map(c=>L(c.osProcessed)), backgroundColor:gold},
+    {label:'In approval', data:matOut.map(c=>L(c.osPending)), backgroundColor:pale}],
+    'Nothing outstanding for the current filter.', k=>openRows('Outstanding — '+k, INV.filter(r=>MAT(r)===k && (r.osProcessed>0.5||r.osPending>0.5)), 'lineOut'));
+  const prOut = groupBy(INV.filter(r=>r.osProcessed>0.5||r.osPending>0.5), r=>r.project, ['osProcessed','osPending']).sort((a,b)=>(b.osProcessed+b.osPending)-(a.osProcessed+a.osPending)).slice(0,15);
+  hbarStack('projOut','chProjOut', prOut.map(c=>c.key), [
+    {label:'Outstanding', data:prOut.map(c=>L(c.osProcessed)), backgroundColor:gold},
+    {label:'In approval', data:prOut.map(c=>L(c.osPending)), backgroundColor:pale}],
+    'Nothing outstanding for the current filter.', k=>openRows('Outstanding — '+k, INV.filter(r=>r.project===k && (r.osProcessed>0.5||r.osPending>0.5)), 'lineOut'));
+  // ---- Materials ----
+  let t = threeWay(INV, CAT); hbarStack('cat','chCat', t.labels, t.ds, noData, k=>openRows('Category: '+k, INV.filter(r=>CAT(r)===k)));
+  t = threeWay(INV, MAT, 20); hbarStack('mat','chMat', t.labels, t.ds, noData, k=>openRows('Material: '+k, INV.filter(r=>MAT(r)===k)));
+  const cfy = {}; const cSet = new Set();
+  INV.forEach(r=>{ const f=periodBucket(r.date); if(!f) return; const c=CAT(r); cSet.add(c); const g=cfy[f.label]=cfy[f.label]||{s:f.s}; g[c]=(g[c]||0)+r.certified; });
+  const cfyL = Object.keys(cfy).sort(bySort(cfy));
+  const cOrder = cats.map(c=>c.key).filter(c=>cSet.has(c));
+  vbar('catFY','chCatFY', cfyL, cOrder.map(c=>({label:c, data:cfyL.map(k=>L(cfy[k][c]||0)), backgroundColor:cc[c], stack:'a', borderRadius:0})), noData, true);
+  // ---- Suppliers ----
+  const sup = supplierSummary(INV, []).filter(s=>s.certCount);
+  const sTop = sup.slice(0,15);
+  hbarStack('sup','chSup', sTop.map(s=>s.supplier), [
+    {label:'Paid', data:sTop.map(s=>L(s.paid)), backgroundColor:navy},
+    {label:'Outstanding', data:sTop.map(s=>L(s.osProcessed)), backgroundColor:gold},
+    {label:'In approval', data:sTop.map(s=>L(s.osPending)), backgroundColor:pale}], noData, k=>openRows('Supplier: '+k, INV.filter(r=>r.supplier===k)));
+  const sOut = [...sup].filter(s=>s.osProcessed+s.osPending>0.5).sort((a,b)=>(b.osProcessed+b.osPending)-(a.osProcessed+a.osPending)).slice(0,15);
+  hbarStack('supOut','chSupOut', sOut.map(s=>s.supplier), [
+    {label:'Outstanding', data:sOut.map(s=>L(s.osProcessed)), backgroundColor:gold},
+    {label:'In approval', data:sOut.map(s=>L(s.osPending)), backgroundColor:pale}], 'Nothing outstanding for the current filter.',
+    k=>openRows('Yet to be paid — '+k, INV.filter(r=>r.supplier===k && (r.osProcessed>0.5||r.osPending>0.5)), 'lineOut'));
+  const totalC = sum(INV,'certified');
+  const concL = ['Top 5','Next 6–10','Next 11–25','All other suppliers'];
+  const concV = [sup.slice(0,5), sup.slice(5,10), sup.slice(10,25), sup.slice(25)].map(a=>sum(a,'certified'));
+  donut('supConc','chSupConc', concL, concV.map(L), [navy,'#5C63B8',gold,muted], noData, k=>{ const i=concL.indexOf(k); const a=[sup.slice(0,5),sup.slice(5,10),sup.slice(10,25),sup.slice(25)][i]; openDrill('Suppliers — '+k, `${fmtNum(a.length)} suppliers &middot; ${fmtINRCr(sum(a,'certified'))} (${fmtPct(pct(sum(a,'certified'),totalC))})`, 'supplier', a); });
+  const msme = sup.filter(s=>s.msme && (s.osProcessed+s.osPending)>=100).sort((a,b)=>(b.osProcessed+b.osPending)-(a.osProcessed+a.osPending));
+  if(!RAW.fin.length){ destroy('msme'); emptyMsg('chMsme','Upload the Finance "Supplier Outstanding Report With Ageing" to identify MSME suppliers.'); }
+  else hbarStack('msme','chMsme', msme.map(s=>s.supplier), [
+    {label:'Outstanding', data:msme.map(s=>L(s.osProcessed)), backgroundColor:brick},
+    {label:'In approval', data:msme.map(s=>L(s.osPending)), backgroundColor:pale}], 'No MSME supplier outstanding for the current filter.',
+    k=>openRows('MSME outstanding — '+k, INV.filter(r=>r.supplier===k && (r.osProcessed>0.5||r.osPending>0.5)), 'lineOut'));
+  document.getElementById('msmeNote').textContent = RAW.fin.length ? 'MSME = supplier with an Udyam registration number in the Finance outstanding report. MSMED Act: payment due within 45 days of acceptance.' : '';
+  const merged = sup.filter(s=>s.alias);
+  document.getElementById('supNote').innerHTML = merged.length ? `Supplier names merged (same GSTIN, or same name keyed differently): ${merged.slice(0,12).map(s=>`<b>${esc(s.supplier)}</b> ← ${esc(s.alias)}`).join('; ')}${merged.length>12?' …':''}.` : '';
+  // ---- Projects ----
+  const pr = threeWay(INV, r=>r.project, 15);
+  hbarStack('proj','chProj', pr.labels, pr.ds, noData, k=>openRows('Project: '+k, INV.filter(r=>r.project===k)));
+  const co = threeWay(INV, r=>r.company);
+  hbarStack('company','chCompany', co.labels, co.ds, noData, k=>openRows('Company: '+k, INV.filter(r=>r.company===k)));
+  // ---- Payments & advances ----
+  const pay = {};
+  U.inv.concat(U.adv).filter(matchDims).forEach(r=>{ if(r.cashPaid<0.5 || !matchPeriodIso(r.payDate)) return; const f=periodBucket(r.payDate); if(!f) return; const g=pay[f.label]=pay[f.label]||{s:f.s,i:0,a:0}; if(r.type==='ADV') g.a+=r.cashPaid; else g.i+=r.cashPaid; });
+  const payL = Object.keys(pay).sort(bySort(pay));
+  vbar('paid','chPaid', payL, [
+    {label:'Invoice payments', data:payL.map(k=>L(pay[k].i)), backgroundColor:navy, stack:'a'},
+    {label:'Advances', data:payL.map(k=>L(pay[k].a)), backgroundColor:gold, stack:'a'}], 'No payments for the current filter.', true);
+  const st = groupBy(INV, r=>r.status, ['certified']).sort((a,b)=>{ const ia=STATUS_ORDER.indexOf(a.key), ib=STATUS_ORDER.indexOf(b.key); return (ia<0?99:ia)-(ib<0?99:ib); });
+  vbar('status','chStatus', st.map(s=>`${s.key} (${fmtNum(s.certCount)})`), [{label:'Purchase value', data:st.map(s=>L(s.certified)), backgroundColor:st.map(s=>s.key==='Paid'?navy:gold)}], noData, false,
+    (k)=>{ const s = st.find(x=>`${x.key} (${fmtNum(x.certCount)})`===k); if(s) openRows('Status: '+s.key, INV.filter(r=>r.status===s.key)); });
+  const advSup = supplierSummary(INV, ADVR).filter(s=>s.advPending>0.5).sort((a,b)=>b.advPending-a.advPending).slice(0,15);
+  hbarStack('adv','chAdv', advSup.map(s=>s.supplier), [{label:'Advance pending recovery', data:advSup.map(s=>L(s.advPending)), backgroundColor:brick}], 'No advance pending recovery for the current filter.',
+    k=>openDrill('Advances — '+k, '', 'adv', ADVR.filter(r=>r.supplier===k)));
+  const setL = ['Cash paid','Advance adjusted','TDS & other deductions','Debit notes'];
+  const setV = [sum(INV,'cashPaid'), sum(INV,'advAdjusted'), sum(INV,'otherSettled'), sum(INV,'debitNote')];
+  donut('settle','chSettle', setL.filter((_,i)=>setV[i]>0.5), setV.filter(v=>v>0.5).map(L), [navy,gold,'#5C63B8',muted].filter((_,i)=>setV[i]>0.5), noData);
+}
+
+/* ============ DRILL-DOWN MODAL ============ */
+const C = (key,label,o={}) => ({key,label,...o});
+const money = o => ({fmt:fmtINRCr, money:true, ...o});
+const dateCol = (key,label) => C(key,label,{align:'left', fmt:fmtDate, date:true});
+const T = (key,label) => C(key,label,{align:'left'});
+const DRILL_COLS = {
+  line: [ T('certRef','Certificate'), T('po','PO No'), T('invNo','Invoice No'), dateCol('invDate','Invoice Date'), dateCol('processed','Processed Date'), T('status','Status'),
+    T('supplier','Supplier'), T('material','Material'), T('category','Category'), T('materialErp','ERP Material Group'), T('basis','Material Basis'),
+    T('project','Project'), T('company','Company'),
+    C('base','Base Amt',money()), C('gst','GST',money()), C('certified','Purchase Value',money()), C('paid','Paid (settled)',money()), C('cashPaid','Cash Paid',money()),
+    C('advAdjusted','Advance Adjusted',money()), C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()) ],
+  lineOut: [ T('certRef','Certificate'), T('po','PO No'), T('invNo','Invoice No'), dateCol('invDate','Invoice Date'), dateCol('processed','Processed Date'), dateCol('due','Due Date'),
+    C('ageDays','Age (days)',{fmt:v=>v===null||v===undefined?'—':fmtNum(v)}), C('overdueDays','Days Overdue',{fmt:v=>v?fmtNum(v):'—'}), T('status','Status'),
+    T('supplier','Supplier'), T('msme','MSME No'), T('material','Material'), T('category','Category'), T('project','Project'), T('company','Company'),
+    C('certified','Purchase Value',money()), C('paid','Paid (settled)',money()), C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()), C('unpaid','Advance Unpaid',money()) ],
+  supplier: [ T('supplier','Supplier'), T('gstin','GSTIN'), T('msmeFlag','MSME'), T('alias','Also billed as'), C('certCount','Certificates',{fmt:fmtNum, money:true}), C('poCount','POs',{fmt:fmtNum}), T('materials','Materials'),
+    C('certified','Purchase Value',money()), C('paid','Paid (settled)',money()), C('cashPaid','Cash Paid',money()), C('osProcessed','Outstanding',money()), C('overdue','Overdue',money()), C('os90','Outstanding > 90 d',money()),
+    C('osPending','In Approval',money()), C('advGiven','Advance Paid',money()), C('advRecovered','Advance Adjusted',money()), C('advPending','Advance Pending',money()), C('yetToPay','Yet to Be Paid',money()) ],
+  material: [ T('key','Material / Category'), C('certCount','Certificates',{fmt:fmtNum}), C('certified','Purchase Value',money()), C('paid','Paid (settled)',money()),
+    C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()), C('yetToPay','Yet to Be Paid',money()) ],
+  po: [ T('po','PO No'), T('supplier','Supplier'), T('project','Project'), T('company','Company'), T('materials','Materials'), C('certCount','Certificates',{fmt:fmtNum}),
+    dateCol('first','First Invoice'), dateCol('last','Last Invoice'), C('certified','Invoiced Value',money()), C('paid','Paid (settled)',money()), C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()) ],
+  adv: [ T('certRef','Advance Cert'), T('po','PO No'), dateCol('created','Created'), dateCol('processed','Processed'), T('status','Status'), T('supplier','Supplier'), T('material','Material'), T('project','Project'),
+    C('requested','Advance Requested',money()), C('given','Advance Paid (incl. TDS)',money()), C('cashPaid','Cash Paid',money()), C('advTds','TDS',money()), C('unpaid','Approved, Unpaid',money()) ],
+  master: [ T('erp','ERP Name'), T('material','Standard Material'), T('category','Category'), C('lines','PO Lines',{fmt:fmtNum, money:true}), C('certified','Value of Lines Containing It',money()) ],
+};
+let drillCur = null;
+function openDrill(title, sub, colsKey, rows){
+  rows = rows.map(r=> r.type ? {...r, material:MAT(r), category:CAT(r)} : r);
+  drillCur = { title, sub, cols: DRILL_COLS[colsKey], rows, sort:null };
+  document.getElementById('drillTitle').textContent = title;
+  document.getElementById('drillSub').innerHTML = sub;
+  document.getElementById('drillSearch').value = '';
+  drawDrill();
+  document.getElementById('drillOverlay').style.display = 'flex';
+}
+function drillRows(){
+  const q = document.getElementById('drillSearch').value.trim().toLowerCase();
+  let rows = drillCur.rows;
+  if(q) rows = rows.filter(r => drillCur.cols.some(c => (''+(r[c.key]??'')).toLowerCase().includes(q)));
+  if(drillCur.sort){ const {key,dir} = drillCur.sort; rows = [...rows].sort((a,b)=>{ const x=a[key], y=b[key]; if(typeof x==='number'||typeof y==='number') return dir*((x??-Infinity)-(y??-Infinity)); return dir*(''+(x??'')).localeCompare(''+(y??'')); }); }
+  return rows;
+}
+function drawDrill(){
+  const {cols} = drillCur, rows = drillRows();
+  document.getElementById('drillThead').innerHTML = cols.map(c=>`<th data-k="${c.key}" style="text-align:${c.align||'right'}">${c.label}${drillCur.sort&&drillCur.sort.key===c.key?(drillCur.sort.dir>0?' ▲':' ▼'):''}</th>`).join('');
+  const shown = rows.slice(0, 2000);
+  document.getElementById('drillTbody').innerHTML = shown.length
+    ? shown.map(r=>'<tr>'+cols.map(c=>{ const v=r[c.key]; const d = c.fmt ? c.fmt(v) : (v===''||v===null||v===undefined?'—':esc(v)); return `<td style="text-align:${c.align||'right'}" title="${escAttr(c.fmt?d:(v??''))}">${d}</td>`; }).join('')+'</tr>').join('')
+    : `<tr><td colspan="${cols.length}" class="modal-empty">No records for the current filter.</td></tr>`;
+  document.getElementById('drillTfoot').innerHTML = rows.length ? cols.map((c,i)=> i===0 ? `<td>Total</td>` : `<td style="text-align:${c.align||'right'}">${c.money ? (c.fmt||fmtNum)(sum(rows,c.key)) : ''}</td>`).join('') : '';
+  document.getElementById('drillCount').textContent = rows.length ? `${rows.length.toLocaleString('en-IN')} row${rows.length===1?'':'s'}${rows.length>shown.length?' (first 2,000 shown — download for all)':''}` : '';
+  document.getElementById('drillDownload').disabled = !rows.length;
+  document.querySelectorAll('#drillThead th').forEach(th=>th.addEventListener('click', ()=>{
+    const k = th.dataset.k; drillCur.sort = (drillCur.sort && drillCur.sort.key===k) ? {key:k, dir:-drillCur.sort.dir} : {key:k, dir:-1}; drawDrill();
+  }));
+}
+document.getElementById('drillSearch').addEventListener('input', ()=>drillCur && drawDrill());
+function closeDrill(){ document.getElementById('drillOverlay').style.display='none'; drillCur=null; }
+document.getElementById('drillClose').addEventListener('click', closeDrill);
+document.getElementById('drillOverlay').addEventListener('click', e=>{ if(e.target.id==='drillOverlay') closeDrill(); });
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeDrill(); });
+document.getElementById('kpiGrid').addEventListener('click', e=>{
+  const t = e.target.closest('.kpi'); if(!t || !drill[t.dataset.drill]) return;
+  const d = drill[t.dataset.drill];
+  const rows = (d.cols==='line'||d.cols==='lineOut') ? d.rows.map(withAge) : d.rows;
+  openDrill(t.querySelector('.lbl').textContent, t.querySelector('.sub').innerHTML, d.cols, rows);
+});
+document.getElementById('matMasterBtn').addEventListener('click', ()=>{
+  const civ = {}; U.inv.filter(r=>r.matErp==='Civil (general)').forEach(r=>{ const k=r.supplierKey; const v=civ[k]=civ[k]||{erp:'Civil  ·  '+r.supplier, material:r.matInf, category:r.catInf, lines:0, certified:0, basis:r.basis}; v.lines++; v.certified+=r.certified; });
+  const rows = U.matMaster.map(m=>({...m})).concat(Object.values(civ).filter(v=>v.basis!=='ERP material group').sort((a,b)=>b.certified-a.certified).map(v=>({...v, erp:v.erp+'  ('+v.basis.replace('Classified by ','by ')+')'})));
+  openDrill('Material name matching', `${fmtNum(U.matMaster.length)} ERP material names matched to ${fmtNum(new Set(U.matMaster.map(m=>m.material)).size)} standard materials in ${fmtNum(new Set(U.matMaster.map(m=>m.category)).size)} categories. Rows starting "Civil · " show how the generic Civil group is classified by supplier.`, 'master', rows);
+});
+function toSheetRows(cols, rows){
+  return rows.map(r=>{ const o={}; cols.forEach(c=>{ let v=r[c.key]; if(c.date) v = v ? parseDateAny(v) : ''; o[c.label] = (v===null||v===undefined)?'':v; }); return o; });
+}
+function sheetFrom(cols, rows){ return XLSX.utils.json_to_sheet(toSheetRows(cols, rows), {cellDates:true, dateNF:'dd-mmm-yyyy'}); }
+document.getElementById('drillDownload').addEventListener('click', ()=>{
+  if(!drillCur) return;
+  const rows = drillRows(); if(!rows.length) return;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, sheetFrom(drillCur.cols, rows), drillCur.title.replace(/[\\\/\?\*\[\]:]/g,'').slice(0,31)||'Data');
+  XLSX.writeFile(wb, 'MP_Purchase_'+(drillCur.title.replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'_')||'Data')+'_'+new Date().toISOString().slice(0,10)+'.xlsx');
+});
+
+/* ============ EXPORT ALL ============ */
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const wb = XLSX.utils.book_new();
+  const lines = INV.map(withAge);
+  XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.line, lines), 'PO Lines');
+  XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.lineOut, lines.filter(r=>r.osProcessed>0.5||r.osPending>0.5)), 'Outstanding');
+  XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.supplier, supplierSummary(INV, ADVR)), 'Supplier Summary');
+  XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.material, materialSummary(INV, MAT)), 'Material Summary');
+  XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.material, materialSummary(INV, CAT)), 'Category Summary');
+  XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.material, materialSummary(INV, r=>r.project)), 'Project Summary');
+  XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.po, poSummary(INV)), 'PO Summary');
+  if(ADVR.length) XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.adv, ADVR.map(r=>({...r, material:MAT(r)}))), 'Advances');
+  XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.master, U.matMaster), 'Material Matching');
+  XLSX.writeFile(wb, 'MP_Purchase_All_Data_'+new Date().toISOString().slice(0,10)+'.xlsx');
+});
+
+/* ============ SECTION NAV ============ */
+document.querySelectorAll('.tab-btn').forEach(b=>b.addEventListener('click', ()=>{ const p=document.getElementById('page-'+b.dataset.page); if(p) p.scrollIntoView({behavior:'smooth',block:'start'}); }));
+(function(){
+  if(!('IntersectionObserver' in window)) return;
+  const obs = new IntersectionObserver(es=>es.forEach(en=>{ if(!en.isIntersecting) return; const n=en.target.id.replace('page-',''); document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.page===n)); }), {rootMargin:'-30% 0px -60% 0px'});
+  document.querySelectorAll('.page').forEach(p=>obs.observe(p));
+})();
+</script>
+</body>
+</html>
