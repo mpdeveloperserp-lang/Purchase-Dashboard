@@ -617,8 +617,12 @@ function colFinder(col){
 function parsePayments(wb){
   const ws = wb.Sheets[wb.SheetNames.find(s=>/payment/i.test(s)) || wb.SheetNames[0]];
   const rows = sheetRows(ws);
-  const h = headerMap(rows, ['company','certificate type']);
-  if(!h) throw new Error('Could not find the header row (COMPANY … Certificate Type …) in the All Purchase Payments report');
+  // Two ERP layouts are supported:
+  //   (a) COMPANY / PROJECT / SUBPROJECT as columns on every row (older export);
+  //   (b) no such columns — instead heading rows "COMPANY NAME : …", "PROJECT NAME : …",
+  //       "SUBPROJECT NAME : …" above each block of certificates, and a "Total :" row after it.
+  const h = headerMap(rows, ['certificate type','cert. no.']) || headerMap(rows, ['certificate type','cert no']);
+  if(!h) throw new Error('Could not find the header row (Certificate Type … Cert. No. …) in the All Purchase Payments report');
   const c = colFinder(h.col), out = [];
   const I = {
     company:c('company'), project:c('project'), subproject:c('subproject'), po:c('po. no.','po no'), type:c('certificate type'),
@@ -631,11 +635,22 @@ function parsePayments(wb){
   ['certNo','vendor','totalCost','payable','paid','outstanding','type'].forEach(k=>{ if(I[k]===undefined) throw new Error('Column "'+k+'" not found in the All Purchase Payments report'); });
   const g = (r,k) => I[k]===undefined ? null : r[I[k]];
   const s = v => (v===null||v===undefined) ? '' : (''+v).replace(/\s+/g,' ').trim();
+  const GROUP_RE = /^\s*(COMPANY|SUBPROJECT|PROJECT)\s+NAME\s*:\s*(.*?)\s*$/i;
+  const ctx = { company:'', project:'', subproject:'' };
   for(let i=h.idx+1;i<rows.length;i++){
     const r = rows[i]; if(!r) continue;
-    if(!(+g(r,'certNo'))) continue;                       // skips blank / grand-total rows
+    // layout (b): a heading row sets the company / project / subproject for the rows below it
+    const head = r.find(v => typeof v==='string' && GROUP_RE.test(v));
+    if(head){
+      const [, kind, name] = head.match(GROUP_RE), k = kind.toUpperCase();
+      if(k==='COMPANY'){ ctx.company = name; ctx.project = ''; ctx.subproject = ''; }
+      else if(k==='PROJECT'){ ctx.project = name; ctx.subproject = ''; }
+      else ctx.subproject = name;
+      continue;
+    }
+    if(!(+g(r,'certNo'))) continue;                       // skips blank / "Total :" / grand-total rows
     out.push({
-      company:s(g(r,'company')), project:s(g(r,'project')), subproject:s(g(r,'subproject')), po:s(g(r,'po')),
+      company:s(g(r,'company')) || ctx.company, project:s(g(r,'project')) || ctx.project, subproject:s(g(r,'subproject')) || ctx.subproject, po:s(g(r,'po')),
       type: /advance/i.test(s(g(r,'type'))) ? 'ADV' : 'INV', certNo:num(g(r,'certNo')),
       created:toISO(g(r,'created')), approved:toISO(g(r,'approved')), processed:toISO(g(r,'processed')), due:toISO(g(r,'due')),
       status:s(g(r,'status')) || 'Unspecified', vendor:s(g(r,'vendor')) || 'Unspecified', gstin:s(g(r,'gstin')).toUpperCase(),
