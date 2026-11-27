@@ -1293,8 +1293,23 @@ let file1 = null, file2 = null, file3 = null;
     document.getElementById('genBtn').disabled = false;
   });
 });
+// The browser can only read a chosen file if it is unchanged on disk. If the file is replaced after it was chosen
+// (e.g. the scheduled sync re-downloads it into the same folder, or it is still open/being saved), reading fails.
 function readWB(file){
-  return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>{ try{ res(XLSX.read(new Uint8Array(e.target.result),{type:'array'})); }catch(x){rej(x);} }; r.onerror=rej; r.readAsArrayBuffer(file); });
+  return new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = e => {
+      try{ res(XLSX.read(new Uint8Array(e.target.result),{type:'array'})); }
+      catch(x){ rej(new Error(`"${file.name}" is not a readable Excel file (${(x && x.message) || x})`)); }
+    };
+    r.onerror = () => {
+      const why = r.error && r.error.name === 'NotReadableError'
+        ? 'the file was changed or replaced after you chose it (for example by the scheduled sync), or it is open in another program'
+        : ((r.error && (r.error.message || r.error.name)) || 'the browser could not open it');
+      rej(new Error(`Could not open "${file.name}": ${why}. Choose the file again and click Generate`));
+    };
+    r.readAsArrayBuffer(file);
+  });
 }
 document.getElementById('genBtn').addEventListener('click', async ()=>{
   const errEl = document.getElementById('errMsg'); errEl.style.display='none';
@@ -1320,9 +1335,17 @@ document.getElementById('genBtn').addEventListener('click', async ()=>{
     if(!next.lines.length) throw new Error('Report 1 (All Purchase Payments Report) is required the first time');
   }catch(err){
     console.error(err);
-    errEl.textContent = 'Could not read the file(s): '+err.message+'. Report 1 should be the PUR "All Purchase Payments Report" export, Report 2 the FINANCE "Supplier Outstanding Report With Ageing" and Report 3 the ENGG "All Types of Certificate Details" export from IN4 ERP.';
+    const em = (err && (err.message || err.name)) || String(err);
+    if(/^Could not open "/.test(em)){
+      errEl.textContent = em + '. Nothing was changed — the published dashboard is as before.';
+      errEl.style.display='block'; setPublishState('failed', em);
+      ['1','2','3'].forEach(n=>{ document.getElementById('file'+n).value=''; document.getElementById('fname'+n).textContent='Click to choose file (.xlsx)'; document.getElementById('drop'+n).classList.remove('filled'); });
+      file1 = file2 = file3 = null; document.getElementById('genBtn').disabled = true;
+      return;
+    }
+    errEl.textContent = 'Could not read the file(s): '+em+'. Report 1 should be the PUR "All Purchase Payments Report" export, Report 2 the FINANCE "Supplier Outstanding Report With Ageing" and Report 3 the ENGG "All Types of Certificate Details" export from IN4 ERP.';
     errEl.style.display='block';
-    setPublishState('failed', 'Could not read the file(s): '+err.message);
+    setPublishState('failed', 'Could not read the file(s): '+em);
     return;
   }
   // Guard against publishing a wrong or partial export over good data: a report with less than half the
