@@ -71,6 +71,8 @@
   .err{color:var(--brick);font-size:12.5px;margin-top:10px;display:none;}
   .loaded-bar{display:none;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 20px;margin-bottom:18px;font-size:13px;gap:12px;}
   .loaded-bar .files{color:var(--muted);}
+  .loaded-bar .bar-btns{display:flex;gap:8px;flex-shrink:0;}
+  #checksBtn.has-warn{color:var(--brick);border-color:#F6D2B4;background:#FFF4E8;}
   .loaded-bar .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--teal);margin-right:8px;}
   #dashboard{display:none;}
   .hero-split{display:grid;grid-template-columns:repeat(4,1fr);background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:26px;box-shadow:0 1px 2px rgba(20,30,50,.04);}
@@ -195,9 +197,11 @@
 </header>
 <main>
   <div class="dashboard-loading" id="dashboardLoading" style="display:none;"><span class="spin"></span>Loading dashboard data…</div>
+  <div id="dataChecks" style="display:none;">
   <div class="last-updated-badge" id="lastUpdatedBadge" style="display:none;"></div>
   <div class="recon" id="reconBadge" style="display:none;"></div>
   <div class="recon info" id="enggBadge" style="display:none;"></div>
+  </div>
   <div class="upload-card" id="uploadCard">
     <h2>Load the latest purchase reports</h2>
     <p class="sub">Upload the exports from IN4 ERP. Nothing leaves your browser until you publish — the files are parsed locally.</p>
@@ -230,7 +234,7 @@
   <div class="sync-banner" id="syncBanner" style="display:none;"><span class="msg" id="syncMsg"></span><button class="btn btn-primary" id="retryPublishBtn" style="display:none;">Retry publish</button></div>
   <div class="loaded-bar" id="loadedBar">
     <div class="files"><span class="dot"></span><span id="loadedNames"></span></div>
-    <button class="btn btn-ghost" id="changeBtn">Upload new file</button>
+    <div class="bar-btns"><button class="btn btn-ghost" id="checksBtn" type="button">Data details</button><button class="btn btn-ghost" id="changeBtn">Upload new file</button></div>
   </div>
 
   <div id="dashboard">
@@ -1247,8 +1251,21 @@ function showDashboard(label){
   document.getElementById('dashboard').style.display='block';
   buildUnified();
   document.getElementById('loadedNames').textContent = typeof label==='function' ? label() : label;
-  renderRecon(); renderEnggBadge(); resetFilters(); buildFilterOptions(); render();
+  renderRecon(); renderEnggBadge(); updateChecksBtn(); resetFilters(); buildFilterOptions(); render();
 }
+// The data-source details (as-of time, Finance tie-out, Engineering split) stay hidden until "Data details" is clicked.
+function updateChecksBtn(){
+  const btn = document.getElementById('checksBtn'), box = document.getElementById('dataChecks');
+  const warn = ['reconBadge','enggBadge'].some(id=>{ const e=document.getElementById(id); return e.style.display!=='none' && e.classList.contains('warn'); });
+  const open = box.style.display!=='none';
+  btn.classList.toggle('has-warn', warn);
+  btn.innerHTML = (warn ? '&#9888; ' : '') + (open ? 'Hide data details' : 'Data details');
+}
+document.getElementById('checksBtn').addEventListener('click', ()=>{
+  const box = document.getElementById('dataChecks');
+  box.style.display = box.style.display==='none' ? 'block' : 'none';
+  updateChecksBtn();
+});
 (async function init(){
   document.getElementById('dashboardLoading').style.display='flex';
   const [remote, local] = await Promise.all([loadPublished(), idbGet()]);
