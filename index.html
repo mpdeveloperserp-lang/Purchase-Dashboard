@@ -197,6 +197,7 @@
   <div class="dashboard-loading" id="dashboardLoading" style="display:none;"><span class="spin"></span>Loading dashboard data…</div>
   <div class="last-updated-badge" id="lastUpdatedBadge" style="display:none;"></div>
   <div class="recon" id="reconBadge" style="display:none;"></div>
+  <div class="recon info" id="enggBadge" style="display:none;"></div>
   <div class="upload-card" id="uploadCard">
     <h2>Load the latest purchase reports</h2>
     <p class="sub">Upload the exports from IN4 ERP. Nothing leaves your browser until you publish — the files are parsed locally.</p>
@@ -212,6 +213,12 @@
         <div class="fname" id="fname2">Click to choose file (.xlsx)</div>
         <div class="hint">ERP report: FINANCE "Supplier Outstanding Report With Ageing" (with the Detailed sheet). Adds MSME registration numbers and cross-checks the outstanding total against Finance.</div>
         <input type="file" id="file2" accept=".xlsx,.xls">
+      </label>
+      <label class="drop" id="drop3">
+        <div class="label">3 &middot; Engineering Certificate Details <span style="text-transform:none;font-weight:500">(optional)</span></div>
+        <div class="fname" id="fname3">Click to choose file (.xlsx)</div>
+        <div class="hint">ERP report: ENGG "All Types of Certificate Details" &mdash; contractor (work order) certificates. Only the work types finalised &amp; paid by Purchase (Lift, Grill, UPVC, Carpenter, CCTV, Borewell, STP, Signage, Hand Rail…) are added.</div>
+        <input type="file" id="file3" accept=".xlsx,.xls">
       </label>
     </div>
     <div class="btn-row">
@@ -229,6 +236,8 @@
   <div id="dashboard">
     <div class="hero-split" id="heroSplit"></div>
     <div class="filter-bar">
+      <div class="filter-field"><label>Source</label>
+        <div class="multiselect" id="fSourceWrap"><button type="button" class="multiselect-btn">PO + Work Orders</button><div class="multiselect-panel"></div></div></div>
       <div class="filter-field"><label>Company</label>
         <div class="multiselect" id="fCompanyWrap"><button type="button" class="multiselect-btn">All Companies</button><div class="multiselect-panel"></div></div></div>
       <div class="filter-field"><label>Project</label>
@@ -360,6 +369,7 @@
       <b>In approval</b> = Submitted / Approved certificates not yet processed. &nbsp;
       <b>Yet to be paid</b> = Outstanding + In approval + approved advances not yet released. &nbsp;
       For every filter: Purchase value = Paid + Outstanding + In approval (+ retention, if any). A certificate raised against several POs is split across those POs in proportion to each PO's net value, so nothing is counted twice. Supplier advances are shown separately and are not added to purchase value (the invoice that recovers them already carries the full value). Office purchases (Office, CBE Office, MP Guindy Office, PVT Head Office) are excluded — this dashboard covers project purchases only.
+      <br><b>Engineering work orders:</b> the work types finalised and paid by Purchase (Lift, Grill, UPVC, Carpenter, CCTV, Borewell, STP, Signage, Hand Rail, and the rest of the agreed list) are taken from the ENGG certificate report. Their Running / Final bills add to purchase value; Adhoc certificates are advances, shown with the advances and recovered on the bills; Retention certificates release retention already held, so they are not new value. Use the <b>Source</b> filter to see PO or work-order figures alone. The Finance outstanding cross-check covers Purchase certificates only.
     </div>
 
     <div class="footer-row">
@@ -422,8 +432,8 @@ try{
   }
 }catch(e){ console.warn('Firebase unavailable — running in local-only mode', e); }
 
-const RAW_KEYS = ['lines','fin'];
-let RAW = { lines: [], fin: [] };
+const RAW_KEYS = ['lines','fin','engg'];
+let RAW = { lines: [], fin: [], engg: [] };
 let U = { inv: [], adv: [], matMaster: [], finTotal:0, finCount:0 };
 let lastPublished = null;
 const charts = {};
@@ -495,6 +505,13 @@ const MATERIAL_RULES = [
   [/hand ?rail/,                                 'Hand Rail',               'Doors, Windows & Metal'],
   [/carpent/,                                    'Carpentry',               'Doors, Windows & Metal'],
   [/^lift|elevator/,                             'Lift',                    'Lifts'],
+  [/hvac|duct/,                                  'HVAC Work',               'Electrical'],
+  [/^stp\b|sewage/,                              'STP',                     'Plumbing & Sanitary'],
+  [/solar/,                                      'Solar',                   'Electrical'],
+  [/main gate/,                                  'Main Gate',               'Doors, Windows & Metal'],
+  [/ots covering/,                               'OTS Covering',            'Doors, Windows & Metal'],
+  [/railing/,                                    'Hand Rail',               'Doors, Windows & Metal'],
+  [/name ?board/,                                'Signage',                 'Consumables & Safety'],
   [/elevation/,                                  'Elevation',               'Civil Works & Site'],
   [/site establishment/,                         'Site Establishment',      'Civil Works & Site'],
   [/infra/,                                      'Infra Development',       'Civil Works & Site'],
@@ -664,6 +681,72 @@ function parsePayments(wb){
   return out;
 }
 
+/* ---- Report 3: Engineering "All Types of Certificate Details" (ENGG) — optional ----
+   Contractor (work order) certificates. Most belong to Engineering, but some work types are finalised and
+   paid by the Purchase team; only those are brought into this dashboard (list below, from the
+   "Work activity finalisation" note). A row is taken when its Work Category OR Sub Category is in the list
+   (e.g. Sub Category "Borewell Drilling" under Work Category "Site Establishment Work").
+   All rows are stored as exported; the selection is applied when the dashboard is built, so editing this
+   list takes effect without re-uploading.
+   Certificate types:  Running / Final → bills (purchase value)
+                       Adhoc           → ADVANCES (recovered later via "Advance Adj. Recovered" on the bills)
+                       Retention       → release of retention held on earlier bills (not new value) */
+const PURCHASE_WORK_TYPES = [
+  'Borewell Divining', 'Borewell Drilling', 'Carpenter', 'CCTV - Installation', 'DOOR WORKS&Windows',
+  'Furniture & Fixtures', 'Grill', 'Hand Rail', 'HVAC Work', 'Lift', 'Main Gate', 'Name Board',
+  'OTS Covering', 'RAILING WORKS', 'Signage Work', 'SOLAR', 'STP', 'UPVC',
+];
+const _wtKey = s => (s||'').toString().toLowerCase().replace(/[^a-z0-9]/g,'');
+const _wtSet = new Set(PURCHASE_WORK_TYPES.map(_wtKey));
+function purchaseWorkType(category, subCategory){
+  if(_wtSet.has(_wtKey(subCategory))) return (''+subCategory).trim();
+  if(_wtSet.has(_wtKey(category))) return (''+category).trim();
+  return '';
+}
+function parseEngineering(wb){
+  let best = null;
+  wb.SheetNames.forEach(n=>{
+    if(best) return;
+    const rows = sheetRows(wb.Sheets[n]);
+    const h = headerMap(rows, ['certificate no','contractor name']);
+    if(h && h.col['work category']!==undefined) best = {rows, h};
+  });
+  if(!best) throw new Error('Could not find the detailed sheet (with "Certificate No", "Contractor Name", "Work Category") in the Engineering certificate report');
+  const {rows, h} = best, c = colFinder(h.col), out = [];
+  const I = { company:c('company name'), project:c('project name'), subproject:c('sub project name'), category:c('work category'), subCategory:c('sub category'),
+    wo:c('work order number'), desc:c('work description'), woStatus:c('work order status'), vendor:c('contractor name'), woValue:c('work order value'),
+    certType:c('certificate type'), invNo:c('invoice no'), invDate:c('invoice date'), due:c('due date'), certNo:c('certificate no'), created:c('creation date'),
+    processed:c('processed date'), status:c('status'), certified:c('certified amount'), base:c('base certified amount'),
+    taxIncl:c('tax addition (inclusive)'), taxExcl:c('tax addition (exclusive)'), escalation:c('material escalation'), gross:c('gross bill amount'),
+    advRec:c('advance adj. recovered'), miscRec:c('misc adj. recovered'), matRec:c('material adj recovered'), dnRec:c('debit note adj. recovered'),
+    taxDed:c('tax deduction'), retention:c('retention amount'), otherDed:c('other deduction'), instrument:c('cheque.no/ cheque.dt'),
+    payable:c('amount payable'), paid:c('amount paid'), outstanding:c('outstanding amount'), remarks:c('remarks') };
+  ['certNo','vendor','gross','payable','paid','outstanding','certType','category'].forEach(k=>{ if(I[k]===undefined) throw new Error('Column "'+k+'" not found in the Engineering certificate report'); });
+  const g = (r,k) => I[k]===undefined ? null : r[I[k]];
+  const s = v => (v===null||v===undefined) ? '' : (''+v).replace(/\s+/g,' ').trim();
+  for(let i=h.idx+1;i<rows.length;i++){
+    const r = rows[i]; if(!r || !(+g(r,'certNo'))) continue;
+    const ct = s(g(r,'certType'));
+    out.push({
+      src:'WO', company:s(g(r,'company')), project:s(g(r,'project')), subproject:s(g(r,'subproject')),
+      category:s(g(r,'category')), subCategory:s(g(r,'subCategory')), po:s(g(r,'wo')), workDesc:s(g(r,'desc')), woStatus:s(g(r,'woStatus')),
+      woValue:num(g(r,'woValue')), certType:ct,
+      // Adhoc / Mobilization / Material certificates are advances; Retention releases held retention; the rest are bills
+      type: /adhoc|mobili[sz]ation|^material$/i.test(ct) ? 'ADV' : /retention/i.test(ct) ? 'RET' : 'INV',
+      certNo:num(g(r,'certNo')), created:toISO(g(r,'created')), approved:'', processed:toISO(g(r,'processed')), due:toISO(g(r,'due')),
+      status:s(g(r,'status')) || 'Unspecified', vendor:s(g(r,'vendor')) || 'Unspecified', gstin:'',
+      invNo:s(g(r,'invNo')), invDate:toISO(g(r,'invDate')),
+      base: num(g(r,'base')) - num(g(r,'taxIncl')), taxAdd: num(g(r,'taxIncl')) + num(g(r,'taxExcl')), otherCh:num(g(r,'escalation')),
+      totalCost:num(g(r,'gross')), invAmt:num(g(r,'gross')),
+      advRec:num(g(r,'advRec')), dnRec:num(g(r,'dnRec')), otherRec: num(g(r,'miscRec')) + num(g(r,'matRec')) + num(g(r,'otherDed')),
+      taxDed:num(g(r,'taxDed')), retention:num(g(r,'retention')),
+      payable:num(g(r,'payable')), paid:num(g(r,'paid')), outstanding:num(g(r,'outstanding')),
+      remarks:s(g(r,'remarks')), instrument:s(g(r,'instrument')),
+    });
+  }
+  return out;
+}
+
 /* ---- Report 2: Supplier Outstanding Report With Ageing (FINANCE) — optional ----
    Detailed sheet: one row per outstanding certificate. Used for MSME registration numbers and as an
    independent cross-check: its Outstanding total must equal the dashboard's processed outstanding. */
@@ -707,7 +790,7 @@ const STATUS_ORDER = ['Paid','Partially Paid','Processed','Approved','Submitted'
 // Latest payment-instrument date ("# Online Dt. Aug 05, 2024(Cleared) , …") — the date money actually went out.
 function lastInstrumentDate(s){
   let best = '';
-  (s||'').replace(/Dt\.\s*([A-Za-z]{3}\s+\d{1,2},\s*\d{4})/g, (_,d)=>{ const iso = toISO(d); if(iso > best) best = iso; return _; });
+  (s||'').replace(/Dt\.\s*([A-Za-z]{3}\s+\d{1,2},\s*\d{4}|\d{1,2}-\d{1,2}-\d{4})/g, (_,d)=>{ const iso = toISO(d); if(iso > best) best = iso; return _; });
   return best;
 }
 function allocShares(lines){
@@ -738,7 +821,7 @@ const SUPPLIER_KEYWORDS = [
 ];
 function civilInference(inv){
   const sup = {};
-  inv.forEach(r=>{ if(r.matErp==='Civil (general)' || r.catErp==='Civil Works & Site' || r.catErp===CAT_MULTI || r.catErp===CAT_OTHER) return;
+  inv.forEach(r=>{ if(r.src==='WO' || r.matErp==='Civil (general)' || r.catErp==='Civil Works & Site' || r.catErp===CAT_MULTI || r.catErp===CAT_OTHER) return;
     const s = sup[r.supplierKey] = sup[r.supplierKey] || {tot:0, cat:{}, mat:{}};
     s.tot += r.certified; s.cat[r.catErp]=(s.cat[r.catErp]||0)+r.certified; s.mat[r.matErp]=(s.mat[r.matErp]||0)+r.certified; });
   const pick = {};
@@ -768,14 +851,24 @@ function civilInference(inv){
    Rows are kept in the stored ERP data but dropped here, before any total, chart, filter or export is built.
    Matching ignores case and extra spaces; a closed company's projects go with it. */
 const EXCLUDED_PROJECTS = ['Office','CBE OFFICE','MP Guindy Office','PVT Head Office'];
-const EXCLUDED_COMPANIES = [/chiron/i];
+const EXCLUDED_COMPANIES = [/chiron/i, /^test company$/i];   // closed company; ERP test data
 const _exProj = new Set(EXCLUDED_PROJECTS.map(p=>p.toLowerCase().replace(/\s+/g,' ').trim()));
 function isExcluded(company, project){
   if(EXCLUDED_COMPANIES.some(re=>re.test(company||''))) return true;
   return _exProj.has((project||'').toLowerCase().replace(/\s+/g,' ').trim());
 }
+// Certificate number series. Purchase: certificates and advances. Engineering: Running, Final and Retention
+// share one series; Adhoc, Mobilization, Material, Site Expense, SalesTax … each have their own.
+function certSeries(l){
+  if(l.src!=='WO') return l.type==='ADV' ? 'ADV' : 'CERT';
+  if(/^(running|final|retention)$/i.test(l.certType||'')) return 'CERT';
+  return /adhoc/i.test(l.certType||'') ? 'ADV' : (l.certType||'OTHER').toUpperCase().replace(/[^A-Z0-9]/g,'');
+}
 function buildUnifiedFrom(RAW){
-  const lines = (RAW.lines || []).filter(l=>!isExcluded(l.company, l.project));
+  const enggAll = (RAW.engg || []).filter(l=>!isExcluded(l.company, l.project));
+  const enggSel = enggAll.filter(l=>purchaseWorkType(l.category, l.subCategory));
+  const lines = (RAW.lines || []).filter(l=>!isExcluded(l.company, l.project)).map(l=>({ ...l, src:'PO' }))
+    .concat(enggSel.map(l=>({ ...l, material: purchaseWorkType(l.category, l.subCategory) })));
   const fin = (RAW.fin || []).filter(f=>!isExcluded(f.company, f.project));
   // --- supplier identity: GSTIN first; the same name with a GSTIN differing by one character (a keying slip)
   //     is merged too; same name with a genuinely different GSTIN (different PAN) stays a separate supplier ---
@@ -805,12 +898,13 @@ function buildUnifiedFrom(RAW){
   // suppliers with nothing outstanding are matched by name, but only when that name belongs to one supplier.
   const finByCert = {}; fin.forEach(f=>{ finByCert[f.certId] = f; });
   const msmeByKey = {};
-  lines.forEach(l=>{ const f = l.type==='INV' && finByCert[l.certNo]; if(f && f.msme) msmeByKey[vKey(l)] = f.msme; });
+  lines.forEach(l=>{ const f = l.src==='PO' && l.type==='INV' && finByCert[l.certNo]; if(f && f.msme) msmeByKey[vKey(l)] = f.msme; });
   const keysByName = {}; Object.keys(spell).forEach(k=>Object.keys(spell[k]).forEach(nm=>{ const n=vendorNameKey(nm); const a=(keysByName[n]=keysByName[n]||[]); if(!a.includes(k)) a.push(k); }));
   fin.forEach(f=>{ if(!f.msme) return; const ks = keysByName[vendorNameKey(f.vendor)]; if(ks && ks.length===1 && !msmeByKey[ks[0]]) msmeByKey[ks[0]] = f.msme; });
   // --- group lines into certificates ---
   const groups = new Map();
-  lines.forEach(l=>{ const k = l.type+'|'+l.certNo; if(!groups.has(k)) groups.set(k, []); groups.get(k).push(l); });
+  // Purchase and Engineering certificate numbers are separate series — the source is part of the key
+  lines.forEach(l=>{ const k = l.src+'|'+certSeries(l)+'|'+l.certNo; if(!groups.has(k)) groups.set(k, []); groups.get(k).push(l); });
   const inv = [], adv = [], matSeen = {};
   groups.forEach((ls)=>{
     const shares = allocShares(ls);
@@ -818,11 +912,14 @@ function buildUnifiedFrom(RAW){
       const sh = shares[i];
       const k = vKey(l);
       const cls = classifyMaterial(l.material);
-      (l.material||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(p=>{ const c = canonMaterial(p); const m = matSeen[p] = matSeen[p] || {erp:p, material:c.material, category:c.category, lines:0, certified:0}; m.lines++; m.certified += l.type==='INV' ? l.totalCost : 0; });
+      (l.material||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(p=>{ const c = canonMaterial(p); const m = matSeen[p] = matSeen[p] || {erp:p, material:c.material, category:c.category, lines:0, certified:0}; m.lines++; m.certified += l.type==='INV' ? l.totalCost : 0; m.src = m.src && m.src!==l.src ? 'PO + WO' : l.src; });
       const payable = l.payable*sh, cashPaid = l.paid*sh, os = l.outstanding*sh;
       const processed = !!l.processed;
       const rec = {
-        type:l.type, certNo:l.certNo, certRef:(l.type==='ADV'?'ADV-':'CERT-')+l.certNo, po:l.po || '—', lines:ls.length,
+        type: l.type==='RET' ? 'INV' : l.type, certNo:l.certNo, lines:ls.length,
+        certRef: l.src==='WO' ? 'WO-'+certSeries(l)+'-'+l.certNo : (l.type==='ADV'?'ADV-':'CERT-') + l.certNo, po:l.po || '—',
+        src:l.src, srcLabel: l.src==='WO' ? 'Engineering WO' : 'Purchase PO', certType: l.certType || (l.type==='ADV' ? 'Supplier Advance' : 'Supplier Certificate'),
+        woValue: l.woValue || 0, workDesc: l.workDesc || '',
         company:shortCompany(l.company), project:normalizeProjectName(l.project), projectErp:l.project || '—', subproject:l.subproject,
         supplierKey:k, supplier:vName[k], gstin:validGstin(l.gstin) || (k.startsWith('G:') ? k.slice(2) : ''), supplierAlias:vAlias[k].join(', '),
         msme: msmeByKey[k] || '',
@@ -835,11 +932,19 @@ function buildUnifiedFrom(RAW){
         osProcessed: processed ? os : 0, osPending: processed ? 0 : os,
         instrument:l.instrument, remarks:l.remarks, payDate: lastInstrumentDate(l.instrument) || l.processed,
       };
-      if(l.type==='INV'){
+      if(l.type==='RET'){
+        // Retention release: pays out retention held back on earlier bills — not new purchase value.
+        // Certified 0, retention held reduced by the amount released, paid = released − still outstanding.
+        rec.certified = 0; rec.retention = -l.totalCost;
+        rec.paid = l.totalCost - os;
+        rec.otherSettled = rec.paid - cashPaid - l.advRec - l.dnRec;
+        rec.finOutstanding = 0;
+        inv.push(rec);
+      } else if(l.type==='INV'){
         rec.certified = l.totalCost;
         rec.paid = l.totalCost - os - l.retention;                     // settled
         rec.otherSettled = rec.paid - cashPaid - l.advRec - l.dnRec;    // TDS & other deductions settled
-        const f = finByCert[l.certNo]; rec.finOutstanding = f ? f.outstanding*sh : 0;
+        const f = l.src==='PO' && finByCert[l.certNo]; rec.finOutstanding = f ? f.outstanding*sh : 0;
         inv.push(rec);
       } else {
         // Advance value released = paid share of the advance, grossed up for TDS withheld on it.
@@ -854,9 +959,33 @@ function buildUnifiedFrom(RAW){
   civilInference(inv);
   adv.forEach(r=>{ r.matInf=r.matErp; r.catInf=r.catErp; r.matsInf=r.matsErp; r.basis='ERP material group'; });
   const matMaster = Object.values(matSeen).sort((a,b)=>a.category.localeCompare(b.category)||a.material.localeCompare(b.material)||a.erp.localeCompare(b.erp));
-  return { inv, adv, matMaster, finTotal: fin.reduce((a,f)=>a+f.outstanding,0), finCount: fin.length, finCertIds: new Set(fin.map(f=>f.certId)) };
+  /* ---- Finance report: part-payments ----
+     Outstanding = Payable − Paid. When the Finance report shows a certificate with less Paid than the
+     Payments report (e.g. a Partially Paid certificate listed with Paid 0 and the full payable as outstanding),
+     the paid amount from the Payments report is applied and only the real balance is kept as outstanding.
+     Example: payable ₹2,000, already paid ₹1,750 → paid ₹1,750, outstanding ₹250 (not ₹2,000).
+     The figures as exported are kept (paidReported / outstandingReported) and the change is listed. */
+  const payCert = {};
+  lines.forEach(l=>{ if(l.src==='PO' && l.type==='INV' && !payCert[l.certNo]) payCert[l.certNo] = { payable:l.payable, paid:l.paid, outstanding:l.outstanding, status:l.status }; });
+  const finRows = fin.map(f=>{
+    const p = payCert[f.certId];
+    const base = { ...f, paidReported:f.paid, outstandingReported:f.outstanding, corrected:false, status: p ? p.status : '' };
+    if(!p || p.paid <= f.paid + 0.5) return base;
+    const outstanding = Math.abs(p.payable - f.payable) <= 1 ? Math.max(0, f.payable - p.paid) : Math.max(0, p.outstanding);
+    // the balance stays in the same age bucket the Finance report used for this certificate
+    const bi = f.b.findIndex(v=>Math.abs(v) > 0.5);
+    const b = f.b.map((v,i)=> i===bi ? outstanding : 0);
+    return { ...base, paid:p.paid, outstanding, b, corrected:true };
+  });
+  const finCorrections = finRows.filter(f=>f.corrected);
+  const enggTypesFound = {}; enggSel.forEach(l=>{ const t = purchaseWorkType(l.category, l.subCategory); enggTypesFound[t] = (enggTypesFound[t]||0)+1; });
+  return { inv, adv, matMaster, finRows, finCorrections,
+    engg: { rows: enggAll.length, selected: enggSel.length, typesFound: enggTypesFound,
+            typesMissing: PURCHASE_WORK_TYPES.filter(t=>!Object.keys(enggTypesFound).some(f=>_wtKey(f)===_wtKey(t))) },
+    finTotal: finRows.reduce((a,f)=>a+f.outstanding,0), finTotalReported: finRows.reduce((a,f)=>a+f.outstandingReported,0),
+    finCount: finRows.length, finCertIds: new Set(finRows.map(f=>f.certId)) };
 }
-if(typeof module!=='undefined') module.exports = { isExcluded, parsePayments, parseFinanceOutstanding, buildUnifiedFrom, classifyMaterial, canonMaterial, toISO, fyOf };
+if(typeof module!=='undefined') module.exports = { isExcluded, parseEngineering, purchaseWorkType, PURCHASE_WORK_TYPES, parsePayments, parseFinanceOutstanding, buildUnifiedFrom, classifyMaterial, canonMaterial, toISO, fyOf };
 
 
 /* ============ PUBLISH / LOAD (chunked, same approach as Sales & Marketing) ============
@@ -1038,40 +1167,68 @@ function updateLastUpdated(){
 function rawLabel(){
   const lines = RAW.lines.filter(l=>!isExcluded(l.company, l.project)), fin = RAW.fin.filter(f=>!isExcluded(f.company, f.project));
   const certs = new Set(lines.filter(l=>l.type==='INV').map(l=>l.certNo)).size, advs = new Set(lines.filter(l=>l.type==='ADV').map(l=>l.certNo)).size;
-  return `${certs.toLocaleString('en-IN')} supplier certificates + ${advs.toLocaleString('en-IN')} advances (${lines.length.toLocaleString('en-IN')} PO lines)` + (fin.length ? `, ${fin.length.toLocaleString('en-IN')} Finance outstanding rows` : '') + ' · office purchases excluded';
+  const eg = U && U.engg ? U.engg.selected : 0;
+  return `${certs.toLocaleString('en-IN')} supplier certificates + ${advs.toLocaleString('en-IN')} advances (${lines.length.toLocaleString('en-IN')} PO lines)` + (fin.length ? `, ${fin.length.toLocaleString('en-IN')} Finance outstanding rows` : '') + (eg ? `, ${eg.toLocaleString('en-IN')} Engineering work-order certificates` : '') + ' · office purchases excluded';
 }
 function buildUnified(){ U = buildUnifiedFrom(RAW); }
 function renderRecon(){
   const el = document.getElementById('reconBadge');
   if(!U.inv.length){ el.style.display='none'; return; }
-  const dashOs = U.inv.reduce((a,r)=>a+r.osProcessed,0);
+  const dashOs = U.inv.filter(r=>r.src==='PO').reduce((a,r)=>a+r.osProcessed,0);   // Finance report = Purchase certificates only
   el.style.display='flex';
   if(!RAW.fin.length){
     el.className='recon info';
-    el.innerHTML = `Outstanding ${fmtINRCr(dashOs)} is taken from the All Purchase Payments report. <small>&nbsp;Upload the Finance "Supplier Outstanding Report With Ageing" to cross-check it and add MSME numbers.</small>`;
+    el.innerHTML = `Purchase outstanding ${fmtINRCr(dashOs)} is taken from the All Purchase Payments report. <small>&nbsp;Upload the Finance "Supplier Outstanding Report With Ageing" to cross-check it and add MSME numbers.</small>`;
     return;
   }
   const diff = dashOs - U.finTotal;
   // Finance rounds each certificate's outstanding to whole rupees, so compare certificate by certificate within ₹1.
-  const ours = {}; U.inv.forEach(r=>{ if(r.processed) ours[r.certNo] = (ours[r.certNo]||0) + r.osProcessed; });
-  const finM = {}; RAW.fin.filter(f=>!isExcluded(f.company, f.project)).forEach(f=>{ finM[f.certId] = (finM[f.certId]||0) + f.outstanding; });
+  const ours = {}; U.inv.forEach(r=>{ if(r.src==='PO' && r.processed) ours[r.certNo] = (ours[r.certNo]||0) + r.osProcessed; });
+  const finM = {}; U.finRows.forEach(f=>{ finM[f.certId] = (finM[f.certId]||0) + f.outstanding; });   // part-payments already applied
+  const nc = U.finCorrections.length, corrAmt = U.finTotalReported - U.finTotal;
+  const corrNote = nc ? ` <small>&nbsp;<a href="#" id="finCorrLink">${fmtNum(nc)} part-paid certificate${nc===1?'':'s'}</a> corrected: the Finance report showed them as fully unpaid, though ${fmtINRCr(corrAmt)} of them is already paid (Finance report as exported: ${fmtINRCr(U.finTotalReported)}).</small>` : '';
   const ids = new Set([...Object.keys(ours).filter(k=>Math.abs(ours[k])>=0.005), ...Object.keys(finM).filter(k=>Math.abs(finM[k])>=0.005)]);
   const bad = [...ids].filter(k=>Math.abs((ours[k]||0)-(finM[k]||0))>1);
   if(!bad.length){
     el.className='recon ok';
-    el.innerHTML = `&#10003; Outstanding ties to the Finance Supplier Outstanding report, certificate by certificate — ${fmtINRCr(U.finTotal)} across ${fmtNum(U.finCount)} certificates.` + (Math.abs(diff)>=1 ? ` <small>&nbsp;(₹${fmtNum(Math.abs(diff))} difference is Finance rounding each certificate to whole rupees.)</small>` : '');
+    el.innerHTML = `&#10003; Outstanding ties to the Finance Supplier Outstanding report, certificate by certificate — ${fmtINRCr(U.finTotal)} across ${fmtNum(U.finCount)} certificates.` + (Math.abs(diff)>=1 ? ` <small>&nbsp;(₹${fmtNum(Math.abs(diff))} difference is Finance rounding each certificate to whole rupees.)</small>` : '') + corrNote;
   } else {
     const badAmt = bad.reduce((a,k)=>a+Math.abs((ours[k]||0)-(finM[k]||0)),0);
     el.className='recon warn';
-    el.innerHTML = `&#9888; ${fmtNum(bad.length)} certificates differ from the Finance Supplier Outstanding report (${fmtINRCr(badAmt)}; dashboard ${fmtINRCr(dashOs)} vs Finance ${fmtINRCr(U.finTotal)}). <small>&nbsp;Usually the two reports were exported at different times — export both together and upload again.</small>`;
+    el.innerHTML = `&#9888; ${fmtNum(bad.length)} certificates differ from the Finance Supplier Outstanding report (${fmtINRCr(badAmt)}; dashboard ${fmtINRCr(dashOs)} vs Finance ${fmtINRCr(U.finTotal)}). <small>&nbsp;Usually the two reports were exported at different times — export both together and upload again.</small>` + corrNote;
   }
+  const link = document.getElementById('finCorrLink');
+  if(link) link.addEventListener('click', e=>{ e.preventDefault();
+    openDrill('Part-paid certificates corrected', `The Finance report listed these Partially Paid certificates with Paid 0 and the full payable as outstanding. Outstanding here = Payable − Paid (paid amount from the All Purchase Payments report). ${fmtINRCr(corrAmt)} already paid.`, 'finCorr',
+      U.finCorrections.map(f=>({...f, overstated: f.outstandingReported - f.outstanding})).sort((a,b)=>b.overstated-a.overstated)); });
+}
+function renderEnggBadge(){
+  const el = document.getElementById('enggBadge');
+  if(!RAW.engg || !RAW.engg.length || !U.engg){ el.style.display='none'; return; }
+  const W = U.inv.filter(r=>r.src==='WO'), WA = U.adv.filter(r=>r.src==='WO');
+  const P = U.inv.filter(r=>r.src==='PO');
+  const range = rows => { const ds = rows.map(r=>r.date).filter(Boolean).sort(); return ds.length ? [ds[0], ds[ds.length-1]] : null; };
+  // period of the whole Engineering export (not just the selected work types, which may simply start later)
+  const eds = RAW.engg.map(l=>l.invDate || l.created).filter(Boolean).sort();
+  const wr = eds.length ? [eds[0], eds[eds.length-1]] : null, pr = range(P);
+  const found = Object.entries(U.engg.typesFound).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${esc(k)} (${v})`).join(', ');
+  let html = `Engineering work orders: <b>${fmtNum(U.engg.selected)}</b> of ${fmtNum(RAW.engg.length)} certificates are Purchase-handled work types — ${found}${RAW.engg.length > U.engg.rows ? ` (office projects excluded)` : ''}. ` +
+    `Bills ${fmtINRCr(sum(W,'certified'))}, advances ${fmtINRCr(sum(WA,'given'))} (shown separately, recovered on the bills).` +
+    (U.engg.typesMissing.length ? ` <small>&nbsp;No certificates in this file for: ${U.engg.typesMissing.map(esc).join(', ')}.</small>` : '');
+  // The two reports must cover the same period, or the totals mix all-time purchase with a part-period of work orders.
+  if(wr && pr && wr[0] > pr[0] && (parseDateAny(wr[0]) - parseDateAny(pr[0]))/86400000 > 45){
+    el.className = 'recon warn';
+    html = `&#9888; The Engineering report covers only ${fmtDate(wr[0])} – ${fmtDate(wr[1])}, but the Purchase report goes back to ${fmtDate(pr[0])}. Export the ENGG report for all dates so both cover the same period. <small>&nbsp;Until then, work-order figures are for that period only.</small><br>` + html;
+  } else el.className = 'recon info';
+  el.innerHTML = '<div>'+html+'</div>'; el.style.display = 'flex';
 }
 function showDashboard(label){
   document.getElementById('uploadCard').style.display='none';
   document.getElementById('loadedBar').style.display='flex';
-  document.getElementById('loadedNames').textContent = label;
   document.getElementById('dashboard').style.display='block';
-  buildUnified(); renderRecon(); resetFilters(); buildFilterOptions(); render();
+  buildUnified();
+  document.getElementById('loadedNames').textContent = typeof label==='function' ? label() : label;
+  renderRecon(); renderEnggBadge(); resetFilters(); buildFilterOptions(); render();
 }
 (async function init(){
   document.getElementById('dashboardLoading').style.display='flex';
@@ -1085,13 +1242,13 @@ function showDashboard(label){
     localMeta = {savedAt:remote.meta.at, files:remote.meta.files, published:true};
     idbSet({raw:RAW, ...localMeta});
     updateLastUpdated();
-    showDashboard('Showing published dashboard — '+rawLabel());
+    showDashboard(()=>'Showing published dashboard — '+rawLabel());
     return;
   }
   if(local && local.raw){
     RAW = norm(local.raw); localMeta = {savedAt:local.savedAt, files:local.files||[], published:!!local.published};
     lastPublished = {at:local.savedAt, files:local.files||[]}; updateLastUpdated();
-    showDashboard('Showing data saved in this browser — '+rawLabel());
+    showDashboard(()=>'Showing data saved in this browser — '+rawLabel());
     if(!local.published)
       setSync('warn', 'This upload is saved in this browser but has NOT been published — others still see the previous data.'+(remote.status==='error'?'<small>'+esc(explainFsError(remote.error))+'</small>':''), true);
     else if(remote.status==='error')
@@ -1108,11 +1265,11 @@ document.getElementById('retryPublishBtn').addEventListener('click', async ()=>{
 });
 
 /* ============ UPLOAD ============ */
-let file1 = null, file2 = null;
-['1','2'].forEach(n=>{
+let file1 = null, file2 = null, file3 = null;
+['1','2','3'].forEach(n=>{
   document.getElementById('file'+n).addEventListener('change', e=>{
     const f = e.target.files && e.target.files[0]; if(!f) return;
-    if(n==='1') file1 = f; else file2 = f;
+    if(n==='1') file1 = f; else if(n==='2') file2 = f; else file3 = f;
     document.getElementById('fname'+n).textContent = f.name; document.getElementById('drop'+n).classList.add('filled');
     document.getElementById('genBtn').disabled = false;
   });
@@ -1136,10 +1293,15 @@ document.getElementById('genBtn').addEventListener('click', async ()=>{
       const fin = parseFinanceOutstanding(await readWB(file2));
       next.fin = fin;
     }
+    if(file3){
+      const engg = parseEngineering(await readWB(file3));
+      if(!engg.length) throw new Error('No certificate rows were recognised in Report 3 (Engineering)');
+      next.engg = engg;
+    }
     if(!next.lines.length) throw new Error('Report 1 (All Purchase Payments Report) is required the first time');
   }catch(err){
     console.error(err);
-    errEl.textContent = 'Could not read the file(s): '+err.message+'. Report 1 should be the PUR "All Purchase Payments Report" export and Report 2 the FINANCE "Supplier Outstanding Report With Ageing" export from IN4 ERP.';
+    errEl.textContent = 'Could not read the file(s): '+err.message+'. Report 1 should be the PUR "All Purchase Payments Report" export, Report 2 the FINANCE "Supplier Outstanding Report With Ageing" and Report 3 the ENGG "All Types of Certificate Details" export from IN4 ERP.';
     errEl.style.display='block';
     setPublishState('failed', 'Could not read the file(s): '+err.message);
     return;
@@ -1156,15 +1318,15 @@ document.getElementById('genBtn').addEventListener('click', async ()=>{
   }
   RAW = next;
   const prevFiles = (localMeta && localMeta.files) || (lastPublished && lastPublished.files) || [];
-  const files = [file1 ? file1.name : prevFiles[0], file2 ? file2.name : prevFiles[1]].map(f=>f||'');
+  const files = [file1 ? file1.name : prevFiles[0], file2 ? file2.name : prevFiles[1], file3 ? file3.name : prevFiles[2]].map(f=>f||'');
   const savedAt = new Date().toISOString();
   localMeta = {savedAt, files, published:false};
   await idbSet({raw:RAW, ...localMeta});
   lastPublished = {at:savedAt, files}; updateLastUpdated();
-  showDashboard('Loaded '+rawLabel());
+  showDashboard(()=>'Loaded '+rawLabel());
   document.getElementById('genNote').textContent = 'Generated '+new Date(savedAt).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})+' from the uploaded reports.';
-  file1 = file2 = null;
-  ['1','2'].forEach(n=>{ document.getElementById('file'+n).value=''; document.getElementById('fname'+n).textContent='Click to choose file (.xlsx)'; document.getElementById('drop'+n).classList.remove('filled'); });
+  file1 = file2 = file3 = null;
+  ['1','2','3'].forEach(n=>{ document.getElementById('file'+n).value=''; document.getElementById('fname'+n).textContent='Click to choose file (.xlsx)'; document.getElementById('drop'+n).classList.remove('filled'); });
   btn.disabled = true;
   await publish(files);
 });
@@ -1186,6 +1348,7 @@ document.getElementById('fCivilMode').addEventListener('change', e=>{ civilMode 
    Period filters (FY / Month / Date) go by INVOICE DATE (supplier advances: certificate date).
    Material filter keeps a combined PO line ("Electrical + Plumbing") if it contains any selected material. */
 const FILTERS = [
+  {key:'source',   wrap:'fSourceWrap',   all:'PO + Work Orders',   get:r=>r.srcLabel},
   {key:'company',  wrap:'fCompanyWrap',  all:'All Companies',      get:r=>r.company},
   {key:'project',  wrap:'fProjectWrap',  all:'All Projects',       get:r=>r.project, search:true},
   {key:'category', wrap:'fCategoryWrap', all:'All Categories',     get:r=>CAT(r)},
@@ -1223,6 +1386,7 @@ function allRows(){ return U.inv.concat(U.adv); }
 function buildFilterOptions(){
   const R = allRows();
   const opt = v=>({value:v,label:v});
+  filterOptions.source = ['Purchase PO','Engineering WO'].filter(s=>R.some(r=>r.srcLabel===s)).map(opt);
   filterOptions.company = uniqSorted(R.map(r=>r.company)).map(opt);
   filterOptions.project = uniqSorted(R.map(r=>r.project)).map(opt);
   filterOptions.category = uniqSorted(R.map(CAT)).map(opt);
@@ -1371,7 +1535,7 @@ function render(){
 }
 function renderFilterSummary(){
   const chips = [];
-  ['company','project','category','material','supplier','status'].forEach(k=>filterState[k].forEach(v=>chips.push(v)));
+  ['source','company','project','category','material','supplier','status'].forEach(k=>filterState[k].forEach(v=>chips.push(v)));
   if(filterState.month.length) filterState.month.forEach(v=>{ const o=filterOptions.month.find(x=>x.value===v); chips.push(o?o.label:v); });
   else filterState.fy.forEach(v=>chips.push(v));
   if(dateRangeActive()) chips.push((filterState.dateFrom ? fmtDate(filterState.dateFrom) : 'Start') + ' → ' + (filterState.dateTo ? fmtDate(filterState.dateTo) : 'Today'));
@@ -1385,7 +1549,9 @@ function renderHero(){
   const c = sum(INV,'certified'), p = sum(INV,'paid'), o = sum(INV,'osProcessed'), q = sum(INV,'osPending'), ret = sum(INV,'retention');
   const card = (cls,lbl,v,sub,key) => `<div class="hero-half ${cls}" data-hero="${key}"><div class="lbl">${lbl}</div><div class="big num">${fmtINRCr(v)}</div><div class="sub2">${sub}</div><div class="hero-bar"><div class="fill" style="width:${Math.max(0,Math.min(100,pct(v,c)))}%"></div></div></div>`;
   document.getElementById('heroSplit').innerHTML =
-    card('cert','Purchase Value (Certified)',c,`${fmtNum(certCount(INV))} supplier certificates &middot; ${fmtNum(new Set(INV.map(r=>r.company+'|'+r.po)).size)} POs`,'cert') +
+    card('cert','Purchase Value (Certified)',c, INV.some(r=>r.src==='WO')
+      ? `${fmtNum(certCount(INV))} certificates &middot; ${fmtNum(new Set(INV.map(r=>r.company+'|'+r.po)).size)} POs / work orders`
+      : `${fmtNum(certCount(INV))} supplier certificates &middot; ${fmtNum(new Set(INV.map(r=>r.company+'|'+r.po)).size)} POs`,'cert') +
     card('paid','Total Paid',p,`${fmtPct(pct(p,c))} of purchase value settled`+(ret>=1000?` &middot; ${fmtINRCr(ret)} retention held`:''),'paid') +
     card('out','Total Outstanding',o,`${fmtPct(pct(o,c))} &middot; processed by Finance, not yet paid`,'out') +
     card('pend','In Approval (Yet to Process)',q,`${fmtPct(pct(q,c))} &middot; Submitted / Approved, not yet processed`,'pend');
@@ -1431,9 +1597,13 @@ function renderKPIs(){
   const per = periodActive() ? 'selected period' : 'all-time';
   document.getElementById('kpiGrid').innerHTML =
     `<div class="kpi-group-label">Purchases &middot; ${per}</div>` +
-    tile('Purchase Value','cert',fmtINRCr(certified),`Incl. GST ${fmtINRCr(sum(INV,'gst'))} &middot; base value ${fmtINRCr(sum(INV,'base'))}`) +
-    tile('Supplier Certificates','certs',fmtNum(nCert),`<b>${fmtNum(paidCerts)}</b> fully paid &middot; ${fmtNum(nCert-paidCerts)} open`) +
-    tile('Purchase Orders','pos',fmtNum(pos),`Avg ${fmtINRCr(pos?certified/pos:0)} invoiced per PO`) +
+    tile('Purchase Value','cert',fmtINRCr(certified), INV.some(r=>r.src==='WO') && INV.some(r=>r.src==='PO')
+      ? `<b>${fmtINRCr(sum(INV.filter(r=>r.src==='PO'),'certified'))}</b> via PO &middot; <b>${fmtINRCr(sum(INV.filter(r=>r.src==='WO'),'certified'))}</b> via work orders (Engineering)`
+      : `Incl. GST ${fmtINRCr(sum(INV,'gst'))} &middot; base value ${fmtINRCr(sum(INV,'base'))}`) +
+    tile(INV.some(r=>r.src==='WO') ? 'Certificates' : 'Supplier Certificates','certs',fmtNum(nCert),`<b>${fmtNum(paidCerts)}</b> fully paid &middot; ${fmtNum(nCert-paidCerts)} open`) +
+    tile(INV.some(r=>r.src==='WO') ? 'Purchase / Work Orders' : 'Purchase Orders','pos',fmtNum(pos), INV.some(r=>r.src==='WO')
+      ? `${fmtNum(new Set(INV.filter(r=>r.src==='PO').map(r=>r.company+'|'+r.po)).size)} POs &middot; ${fmtNum(new Set(INV.filter(r=>r.src==='WO').map(r=>r.company+'|'+r.po)).size)} work orders`
+      : `Avg ${fmtINRCr(pos?certified/pos:0)} invoiced per PO`) +
     tile('Suppliers','suppliers',fmtNum(supInv.length),topSup?`Largest: ${esc(topSup.supplier)} (${fmtINRCr(topSup.certified)})`:'—') +
     tile('Top Material Category','cats',topCat?esc(topCat.key):'—',topCat?`${fmtINRCr(topCat.certified)} &middot; ${fmtPct(pct(topCat.certified,certified))} of purchase value`:'—') +
     tile('Materials','mats',fmtNum(new Set(INV.flatMap(MATS)).size),`Across ${fmtNum(cats.length)} categories &middot; standardised names`) +
@@ -1462,9 +1632,10 @@ function renderKPIs(){
 }
 function poSummary(rows){
   const m = {};
-  rows.forEach(r=>{ const k=r.company+'|'+r.po; const v = m[k] = m[k] || {po:r.po, supplier:r.supplier, project:r.project, company:r.company, materials:new Set(), certs:new Set(), first:r.date, last:r.date, certified:0, paid:0, osProcessed:0, osPending:0};
+  rows.forEach(r=>{ const k=r.company+'|'+r.po; const v = m[k] = m[k] || {po:r.po, srcLabel:r.srcLabel, orderValue:0, supplier:r.supplier, project:r.project, company:r.company, materials:new Set(), certs:new Set(), first:r.date, last:r.date, certified:0, paid:0, osProcessed:0, osPending:0};
+    if(r.woValue > v.orderValue) v.orderValue = r.woValue;
     v.materials.add(MAT(r)); v.certs.add(r.certRef); v.certified+=r.certified; v.paid+=r.paid; v.osProcessed+=r.osProcessed; v.osPending+=r.osPending; if(r.date<v.first) v.first=r.date; if(r.date>v.last) v.last=r.date; });
-  return Object.values(m).map(v=>({...v, materials:[...v.materials].join(', '), certCount:v.certs.size})).sort((a,b)=>b.certified-a.certified);
+  return Object.values(m).map(v=>({...v, materials:[...v.materials].join(', '), certCount:v.certs.size, balanceToBill: v.orderValue ? v.orderValue - v.certified : null})).sort((a,b)=>b.certified-a.certified);
 }
 
 /* ============ CHARTS ============ */
@@ -1660,25 +1831,28 @@ const money = o => ({fmt:fmtINRCr, money:true, ...o});
 const dateCol = (key,label) => C(key,label,{align:'left', fmt:fmtDate, date:true});
 const T = (key,label) => C(key,label,{align:'left'});
 const DRILL_COLS = {
-  line: [ T('certRef','Certificate'), T('po','PO No'), T('invNo','Invoice No'), dateCol('invDate','Invoice Date'), dateCol('processed','Processed Date'), T('status','Status'),
+  line: [ T('srcLabel','Source'), T('certRef','Certificate'), T('certType','Certificate Type'), T('po','PO / WO No'), T('invNo','Invoice No'), dateCol('invDate','Invoice Date'), dateCol('processed','Processed Date'), T('status','Status'),
     T('supplier','Supplier'), T('material','Material'), T('category','Category'), T('materialErp','ERP Material Group'), T('basis','Material Basis'),
     T('project','Project'), T('company','Company'),
     C('base','Base Amt',money()), C('gst','GST',money()), C('certified','Purchase Value',money()), C('paid','Paid (settled)',money()), C('cashPaid','Cash Paid',money()),
     C('advAdjusted','Advance Adjusted',money()), C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()) ],
-  lineOut: [ T('certRef','Certificate'), T('po','PO No'), T('invNo','Invoice No'), dateCol('invDate','Invoice Date'), dateCol('processed','Processed Date'), dateCol('due','Due Date'),
+  lineOut: [ T('srcLabel','Source'), T('certRef','Certificate'), T('po','PO / WO No'), T('invNo','Invoice No'), dateCol('invDate','Invoice Date'), dateCol('processed','Processed Date'), dateCol('due','Due Date'),
     C('ageDays','Age (days)',{fmt:v=>v===null||v===undefined?'—':fmtNum(v)}), C('overdueDays','Days Overdue',{fmt:v=>v?fmtNum(v):'—'}), T('status','Status'),
     T('supplier','Supplier'), T('msme','MSME No'), T('material','Material'), T('category','Category'), T('project','Project'), T('company','Company'),
-    C('certified','Purchase Value',money()), C('paid','Paid (settled)',money()), C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()), C('unpaid','Advance Unpaid',money()) ],
+    C('certified','Purchase Value',money()), C('payable','Net Payable',money()), C('cashPaid','Paid',money()), C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()), C('unpaid','Advance Unpaid',money()) ],
   supplier: [ T('supplier','Supplier'), T('gstin','GSTIN'), T('msmeFlag','MSME'), T('alias','Also billed as'), C('certCount','Certificates',{fmt:fmtNum, money:true}), C('poCount','POs',{fmt:fmtNum}), T('materials','Materials'),
     C('certified','Purchase Value',money()), C('paid','Paid (settled)',money()), C('cashPaid','Cash Paid',money()), C('osProcessed','Outstanding',money()), C('overdue','Overdue',money()), C('os90','Outstanding > 90 d',money()),
     C('osPending','In Approval',money()), C('advGiven','Advance Paid',money()), C('advRecovered','Advance Adjusted',money()), C('advPending','Advance Pending',money()), C('yetToPay','Yet to Be Paid',money()) ],
   material: [ T('key','Material / Category'), C('certCount','Certificates',{fmt:fmtNum}), C('certified','Purchase Value',money()), C('paid','Paid (settled)',money()),
     C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()), C('yetToPay','Yet to Be Paid',money()) ],
-  po: [ T('po','PO No'), T('supplier','Supplier'), T('project','Project'), T('company','Company'), T('materials','Materials'), C('certCount','Certificates',{fmt:fmtNum}),
-    dateCol('first','First Invoice'), dateCol('last','Last Invoice'), C('certified','Invoiced Value',money()), C('paid','Paid (settled)',money()), C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()) ],
-  adv: [ T('certRef','Advance Cert'), T('po','PO No'), dateCol('created','Created'), dateCol('processed','Processed'), T('status','Status'), T('supplier','Supplier'), T('material','Material'), T('project','Project'),
+  po: [ T('srcLabel','Source'), T('po','PO / WO No'), T('supplier','Supplier'), T('project','Project'), T('company','Company'), T('materials','Materials'), C('certCount','Certificates',{fmt:fmtNum}),
+    dateCol('first','First Invoice'), dateCol('last','Last Invoice'), C('orderValue','Work Order Value (WO only)',money({fmt:v=>v?fmtINRCr(v):'—'})), C('certified','Invoiced Value',money()), C('balanceToBill','Balance to Bill (WO)',{fmt:v=>v===null||v===undefined?'—':fmtINRCr(v)}), C('paid','Paid (settled)',money()), C('osProcessed','Outstanding',money()), C('osPending','In Approval',money()) ],
+  adv: [ T('srcLabel','Source'), T('certRef','Advance Cert'), T('po','PO / WO No'), dateCol('created','Created'), dateCol('processed','Processed'), T('status','Status'), T('supplier','Supplier'), T('material','Material'), T('project','Project'),
     C('requested','Advance Requested',money()), C('given','Advance Paid (incl. TDS)',money()), C('cashPaid','Cash Paid',money()), C('advTds','TDS',money()), C('unpaid','Approved, Unpaid',money()) ],
-  master: [ T('erp','ERP Name'), T('material','Standard Material'), T('category','Category'), C('lines','PO Lines',{fmt:fmtNum, money:true}), C('certified','Value of Lines Containing It',money()) ],
+  finCorr: [ T('certId','Certificate ID'), T('vendor','Supplier'), T('project','Project'), T('po','PO No'), T('invNo','Invoice No'), dateCol('processed','Processed Date'), T('status','Status'),
+    C('payable','Net Payable',money()), C('paidReported','Paid — Finance report',money()), C('paid','Paid — actual',money()),
+    C('outstandingReported','Outstanding — Finance report',money()), C('outstanding','Outstanding — actual',money()), C('overstated','Overstated',money()) ],
+  master: [ T('src','Source'), T('erp','ERP Name'), T('material','Standard Material'), T('category','Category'), C('lines','PO Lines',{fmt:fmtNum, money:true}), C('certified','Value of Lines Containing It',money()) ],
 };
 let drillCur = null;
 function openDrill(title, sub, colsKey, rows){
@@ -1752,6 +1926,7 @@ document.getElementById('exportBtn').addEventListener('click', ()=>{
   XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.po, poSummary(INV)), 'PO Summary');
   if(ADVR.length) XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.adv, ADVR.map(r=>({...r, material:MAT(r)}))), 'Advances');
   XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.master, U.matMaster), 'Material Matching');
+  if(U.finCorrections.length) XLSX.utils.book_append_sheet(wb, sheetFrom(DRILL_COLS.finCorr, U.finCorrections.map(f=>({...f, overstated:f.outstandingReported-f.outstanding}))), 'Finance Part-Paid Fix');
   XLSX.writeFile(wb, 'MP_Purchase_All_Data_'+new Date().toISOString().slice(0,10)+'.xlsx');
 });
 
