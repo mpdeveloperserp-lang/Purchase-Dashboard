@@ -724,11 +724,26 @@ function parseEngineering(wb){
   ['certNo','vendor','gross','payable','paid','outstanding','certType','category'].forEach(k=>{ if(I[k]===undefined) throw new Error('Column "'+k+'" not found in the Engineering certificate report'); });
   const g = (r,k) => I[k]===undefined ? null : r[I[k]];
   const s = v => (v===null||v===undefined) ? '' : (''+v).replace(/\s+/g,' ').trim();
+  // Scheduled (subscription) layout: no Company / Project columns — instead a heading row above each block:
+  //   "Company: MP Developers , State: Tamil Nadu , Location: Chennai , Project: MP Charvi , Subproject: MP Charvi"
+  // followed by "SubProject Total :", "Project Total :" … rows (skipped: they have no certificate number).
+  const ctx = { company:'', project:'', subproject:'' };
+  const HEAD_RE = /^\s*Company\s*:/i;
+  const readHeading = txt => {
+    const parts = {};
+    txt.split(/\s*,\s*(?=(?:Company|State|Location|Project|Subproject|Sub Project)\s*:)/i).forEach(seg=>{
+      const m = seg.match(/^\s*([A-Za-z ]+?)\s*:\s*(.*?)\s*$/); if(m) parts[m[1].toLowerCase().replace(/\s+/g,'')] = m[2];
+    });
+    ctx.company = parts.company || ''; ctx.project = parts.project || ''; ctx.subproject = parts.subproject || '';
+  };
   for(let i=h.idx+1;i<rows.length;i++){
-    const r = rows[i]; if(!r || !(+g(r,'certNo'))) continue;
+    const r = rows[i]; if(!r) continue;
+    const head = r.find(v => typeof v==='string' && HEAD_RE.test(v));
+    if(head){ readHeading(head); continue; }
+    if(!(+g(r,'certNo'))) continue;
     const ct = s(g(r,'certType'));
     out.push({
-      src:'WO', company:s(g(r,'company')), project:s(g(r,'project')), subproject:s(g(r,'subproject')),
+      src:'WO', company:s(g(r,'company')) || ctx.company, project:s(g(r,'project')) || ctx.project, subproject:s(g(r,'subproject')) || ctx.subproject,
       category:s(g(r,'category')), subCategory:s(g(r,'subCategory')), po:s(g(r,'wo')), workDesc:s(g(r,'desc')), woStatus:s(g(r,'woStatus')),
       woValue:num(g(r,'woValue')), certType:ct,
       // Adhoc / Mobilization / Material certificates are advances; Retention releases held retention; the rest are bills
@@ -1212,11 +1227,15 @@ function renderEnggBadge(){
   const eds = RAW.engg.map(l=>l.invDate || l.created).filter(Boolean).sort();
   const wr = eds.length ? [eds[0], eds[eds.length-1]] : null, pr = range(P);
   const found = Object.entries(U.engg.typesFound).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${esc(k)} (${v})`).join(', ');
-  let html = `Engineering work orders: <b>${fmtNum(U.engg.selected)}</b> of ${fmtNum(RAW.engg.length)} certificates are Purchase-handled work types — ${found}${RAW.engg.length > U.engg.rows ? ` (office projects excluded)` : ''}. ` +
+  // A scheduled export run with one Certificate Type selected (e.g. only "SITE EXPENSE") is not usable — say so plainly.
+  const ctypes = [...new Set(RAW.engg.map(l=>l.certType).filter(Boolean))];
+  const oneType = ctypes.length===1 && !/running/i.test(ctypes[0]) ? `<b>This Engineering file only contains "${esc(ctypes[0])}" certificates</b> — the report was exported with one Certificate Type selected. Set Certificate Type to <b>All</b> in the IN4 subscription. ` : '';
+  let html = oneType + `Engineering work orders: <b>${fmtNum(U.engg.selected)}</b> of ${fmtNum(RAW.engg.length)} certificates are Purchase-handled work types` + (found ? ` — ${found}` : '') + `${RAW.engg.length > U.engg.rows ? ` (office projects excluded)` : ''}. ` +
     `Bills ${fmtINRCr(sum(W,'certified'))}, advances ${fmtINRCr(sum(WA,'given'))} (shown separately, recovered on the bills).` +
     (U.engg.typesMissing.length ? ` <small>&nbsp;No certificates in this file for: ${U.engg.typesMissing.map(esc).join(', ')}.</small>` : '');
   // The two reports must cover the same period, or the totals mix all-time purchase with a part-period of work orders.
-  if(wr && pr && wr[0] > pr[0] && (parseDateAny(wr[0]) - parseDateAny(pr[0]))/86400000 > 45){
+  if(oneType) el.className = 'recon warn';
+  else if(wr && pr && wr[0] > pr[0] && (parseDateAny(wr[0]) - parseDateAny(pr[0]))/86400000 > 45){
     el.className = 'recon warn';
     html = `&#9888; The Engineering report covers only ${fmtDate(wr[0])} – ${fmtDate(wr[1])}, but the Purchase report goes back to ${fmtDate(pr[0])}. Export the ENGG report for all dates so both cover the same period. <small>&nbsp;Until then, work-order figures are for that period only.</small><br>` + html;
   } else el.className = 'recon info';
@@ -1316,6 +1335,16 @@ document.getElementById('genBtn').addEventListener('click', async ()=>{
       setPublishState('failed', msg); return;
     }
   }
+  // Same guard for the Engineering report: a scheduled export run with one Certificate Type (or a short period)
+  // must not wipe the work-order figures. Auto-sync keeps the last good Engineering data and publishes the rest.
+  let enggNote = '';
+  if(file3 && RAW.engg && RAW.engg.length && next.engg.length < RAW.engg.length*0.5){
+    const msg = `The new Engineering report has ${next.engg.length.toLocaleString('en-IN')} certificates, less than half of the ${RAW.engg.length.toLocaleString('en-IN')} in the current data (types in file: ${[...new Set(next.engg.map(l=>l.certType))].join(', ')}).`;
+    if(PUBLISHED_BY || !confirm(msg+'\n\nUse it anyway? (Cancel keeps the current Engineering data and publishes the other reports.)')){
+      next.engg = RAW.engg; file3 = null; enggNote = msg + ' The current Engineering data was kept.';
+      console.warn(enggNote);
+    }
+  }
   RAW = next;
   const prevFiles = (localMeta && localMeta.files) || (lastPublished && lastPublished.files) || [];
   const files = [file1 ? file1.name : prevFiles[0], file2 ? file2.name : prevFiles[1], file3 ? file3.name : prevFiles[2]].map(f=>f||'');
@@ -1329,6 +1358,7 @@ document.getElementById('genBtn').addEventListener('click', async ()=>{
   ['1','2','3'].forEach(n=>{ document.getElementById('file'+n).value=''; document.getElementById('fname'+n).textContent='Click to choose file (.xlsx)'; document.getElementById('drop'+n).classList.remove('filled'); });
   btn.disabled = true;
   await publish(files);
+  if(enggNote){ errEl.textContent = enggNote; errEl.style.display = 'block'; setSync('warn', esc(enggNote) + '<small>Set Certificate Type to All in the IN4 subscription for the ENGG report.</small>', false); }
 });
 document.getElementById('changeBtn').addEventListener('click', ()=>{
   document.getElementById('uploadCard').style.display='block';
